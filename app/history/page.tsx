@@ -66,7 +66,7 @@ export default function HistoryPage() {
   return (
     <div className="min-h-full bg-[#f7ede4]">
       {/* Header */}
-      <div className="bg-[#FFE4E1] text-gray-800 px-4 pt-12 pb-4">
+      <div className="bg-[#f7ede4] text-gray-800 px-4 pt-12 pb-4">
         <h1 className="text-2xl font-bold mb-3">ประวัติรายการ</h1>
         <input
           type="month"

@@ -64,7 +64,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-full bg-[#f7ede4]">
       {/* Header */}
-      <div className="bg-[#FFE4E1] text-gray-800 px-4 pt-12 pb-6">
+      <div className="bg-[#f7ede4] text-gray-800 px-4 pt-12 pb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <p className="text-rose-400 text-sm">Hop & Sip</p>
@@ -101,7 +101,7 @@ export default function DashboardPage() {
         {/* Quick add button */}
         <Link
           href="/add"
-          className="flex items-center justify-center gap-2 bg-[#FFE4E1] text-rose-700 border border-rose-200 rounded-2xl py-3.5 font-semibold text-base shadow-sm active:opacity-90"
+          className="flex items-center justify-center gap-2 bg-sky-100 text-sky-700 border border-sky-200 rounded-2xl py-3.5 font-semibold text-base shadow-sm active:opacity-90"
         >
           <span className="text-xl leading-none">+</span>
           เพิ่มรายการใหม่
