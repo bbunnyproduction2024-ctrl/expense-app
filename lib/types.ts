@@ -1,7 +1,7 @@
 export type TransactionType = 'รายรับ' | 'รายจ่าย'
 
 export const INCOME_CATEGORIES = [
-  'กาแฟ/เครื่องดื่ม',
+  'ร้าน Hop & Sip',
   'ห้องพัก/Guesthouse',
   'อาหาร',
   'อื่นๆ (รายรับ)',
@@ -9,8 +9,8 @@ export const INCOME_CATEGORIES = [
 
 export const EXPENSE_CATEGORIES = [
   'ค่าพนักงาน/เงินเดือน',
-  'วัตถุดิบกาแฟ/เครื่องดื่ม',
-  'วัตถุดิบอาหาร',
+  'วัตถุดิบร้าน Hop & Sip',
+  'อาหาร/เครื่องดื่ม',
   'ค่าสัตว์เลี้ยง',
   'ค่าน้ำมันรถ',
   'ค่าใช้จ่ายในครอบครัว',
