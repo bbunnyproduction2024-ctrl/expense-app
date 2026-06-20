@@ -62,7 +62,7 @@ export default function DashboardPage() {
   const thaiMonth = format(parseISO(`${selectedMonth}-01`), 'MMMM yyyy', { locale: th })
 
   return (
-    <div className="min-h-full bg-[#f5f5f0]">
+    <div className="min-h-full bg-[#f7ede4]">
       {/* Header */}
       <div className="bg-[#FFE4E1] text-gray-800 px-4 pt-12 pb-6">
         <div className="flex items-center justify-between mb-4">

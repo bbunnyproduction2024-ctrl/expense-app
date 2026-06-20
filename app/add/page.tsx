@@ -51,7 +51,7 @@ export default function AddPage() {
   const isIncome = type === 'รายรับ'
 
   return (
-    <div className="min-h-full bg-[#f5f5f0]">
+    <div className="min-h-full bg-[#f7ede4]">
       {/* Header */}
       <div className={`px-4 pt-12 pb-6 ${isIncome ? 'bg-green-700' : 'bg-red-700'} text-white`}>
         <h1 className="text-2xl font-bold">เพิ่มรายการ</h1>
