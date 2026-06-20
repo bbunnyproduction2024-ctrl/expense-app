@@ -64,24 +64,24 @@ export default function DashboardPage() {
   return (
     <div className="min-h-full bg-[#f5f5f0]">
       {/* Header */}
-      <div className="bg-amber-900 text-white px-4 pt-12 pb-6">
+      <div className="bg-[#FFE4E1] text-gray-800 px-4 pt-12 pb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="text-amber-200 text-sm">Hop & Sip</p>
+            <p className="text-rose-400 text-sm">Hop & Sip</p>
             <h1 className="text-2xl font-bold">รายรับรายจ่าย</h1>
           </div>
           <input
             type="month"
             value={selectedMonth}
             onChange={(e) => setSelectedMonth(e.target.value)}
-            className="bg-amber-800 text-white text-sm rounded-lg px-3 py-1.5 border border-amber-700 focus:outline-none"
+            className="bg-white/70 text-gray-700 text-sm rounded-lg px-3 py-1.5 border border-rose-200 focus:outline-none"
           />
         </div>
 
         {/* Balance Card */}
-        <div className="bg-amber-800/60 rounded-2xl p-4">
-          <p className="text-amber-200 text-sm mb-1">{thaiMonth}</p>
-          <p className="text-3xl font-bold mb-3">
+        <div className="bg-white/60 rounded-2xl p-4">
+          <p className="text-rose-400 text-sm mb-1">{thaiMonth}</p>
+          <p className="text-3xl font-bold mb-3 text-gray-800">
             {balance >= 0 ? '+' : ''}฿{formatBaht(balance)}
           </p>
           <div className="flex gap-3">
@@ -101,7 +101,7 @@ export default function DashboardPage() {
         {/* Quick add button */}
         <Link
           href="/add"
-          className="flex items-center justify-center gap-2 bg-amber-800 text-white rounded-2xl py-3.5 font-semibold text-base shadow-sm active:opacity-90"
+          className="flex items-center justify-center gap-2 bg-[#FFE4E1] text-rose-700 border border-rose-200 rounded-2xl py-3.5 font-semibold text-base shadow-sm active:opacity-90"
         >
           <span className="text-xl leading-none">+</span>
           เพิ่มรายการใหม่
@@ -115,7 +115,7 @@ export default function DashboardPage() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <h2 className="font-semibold text-gray-700">รายการล่าสุด</h2>
-                <Link href="/history" className="text-amber-800 text-sm font-medium">ดูทั้งหมด →</Link>
+                <Link href="/history" className="text-rose-500 text-sm font-medium">ดูทั้งหมด →</Link>
               </div>
 
               {recent.length === 0 ? (

@@ -66,23 +66,23 @@ export default function HistoryPage() {
   return (
     <div className="min-h-full bg-[#f5f5f0]">
       {/* Header */}
-      <div className="bg-amber-900 text-white px-4 pt-12 pb-4">
+      <div className="bg-[#FFE4E1] text-gray-800 px-4 pt-12 pb-4">
         <h1 className="text-2xl font-bold mb-3">ประวัติรายการ</h1>
         <input
           type="month"
           value={filterMonth}
           onChange={(e) => setFilterMonth(e.target.value)}
-          className="bg-amber-800 text-white text-sm rounded-lg px-3 py-1.5 border border-amber-700 focus:outline-none"
+          className="bg-white/70 text-gray-700 text-sm rounded-lg px-3 py-1.5 border border-rose-200 focus:outline-none"
         />
       </div>
 
       {/* Summary bar */}
-      <div className="bg-amber-800 px-4 py-2 flex gap-4 text-sm">
-        <span className="text-green-300">รายรับ ฿{formatBaht(totalIncome)}</span>
-        <span className="text-gray-400">|</span>
-        <span className="text-red-300">รายจ่าย ฿{formatBaht(totalExpense)}</span>
-        <span className="text-gray-400">|</span>
-        <span className={`font-bold ${totalIncome - totalExpense >= 0 ? 'text-white' : 'text-red-300'}`}>
+      <div className="bg-rose-100 px-4 py-2 flex gap-4 text-sm">
+        <span className="text-green-600">รายรับ ฿{formatBaht(totalIncome)}</span>
+        <span className="text-gray-300">|</span>
+        <span className="text-red-500">รายจ่าย ฿{formatBaht(totalExpense)}</span>
+        <span className="text-gray-300">|</span>
+        <span className={`font-bold ${totalIncome - totalExpense >= 0 ? 'text-gray-700' : 'text-red-500'}`}>
           คงเหลือ ฿{formatBaht(totalIncome - totalExpense)}
         </span>
       </div>
@@ -96,7 +96,7 @@ export default function HistoryPage() {
               onClick={() => setFilterType(t)}
               className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 filterType === t
-                  ? 'bg-amber-800 text-white'
+                  ? 'bg-[#FFE4E1] text-rose-700 border border-rose-200'
                   : 'bg-white text-gray-500 border border-gray-200'
               }`}
             >
