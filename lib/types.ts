@@ -51,7 +51,7 @@ export interface MonthlySummary {
 }
 
 // ---- Purchase tracker ----
-export type ItemCategory = 'วัตถุดิบ' | 'อุปกรณ์'
+export type ItemCategory = 'วัตถุดิบ ร้าน Hop & Sip' | 'อุปกรณ์ เครื่องใช้' | 'อาหาร/เครื่องดื่ม' | 'ค่าสัตว์เลี้ยง' | 'อื่นๆ (รายจ่าย)'
 export type ItemUnit = string  // e.g. "5000g", "500ml", "30ชิ้น/อัน"
 
 export interface Product {

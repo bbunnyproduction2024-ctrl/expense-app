@@ -230,8 +230,11 @@ export async function getPurchases(): Promise<Purchase[]> {
 }
 
 const PURCHASE_CATEGORY_MAP: Record<string, string> = {
-  'วัตถุดิบ': 'วัตถุดิบร้าน Hop & Sip',
-  'อุปกรณ์': 'อื่นๆ (รายจ่าย)',
+  'วัตถุดิบ ร้าน Hop & Sip': 'วัตถุดิบร้าน Hop & Sip',
+  'อุปกรณ์ เครื่องใช้': 'ค่าใช้จ่ายในครอบครัว',
+  'อาหาร/เครื่องดื่ม': 'อาหาร/เครื่องดื่ม',
+  'ค่าสัตว์เลี้ยง': 'ค่าสัตว์เลี้ยง',
+  'อื่นๆ (รายจ่าย)': 'อื่นๆ (รายจ่าย)',
 }
 
 export async function addPurchase(input: PurchaseInput): Promise<void> {

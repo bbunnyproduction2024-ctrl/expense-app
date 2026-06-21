@@ -7,6 +7,22 @@ import { format } from 'date-fns'
 
 const UNIT_TYPES = ['g', 'ml', 'ชิ้น/อัน', 'กล่อง/ถุง/แพ็ค']
 
+const ITEM_CATEGORIES: ItemCategory[] = [
+  'วัตถุดิบ ร้าน Hop & Sip',
+  'อุปกรณ์ เครื่องใช้',
+  'อาหาร/เครื่องดื่ม',
+  'ค่าสัตว์เลี้ยง',
+  'อื่นๆ (รายจ่าย)',
+]
+
+const CATEGORY_ICONS: Record<ItemCategory, string> = {
+  'วัตถุดิบ ร้าน Hop & Sip': '🧂',
+  'อุปกรณ์ เครื่องใช้': '🔧',
+  'อาหาร/เครื่องดื่ม': '🍽️',
+  'ค่าสัตว์เลี้ยง': '🐾',
+  'อื่นๆ (รายจ่าย)': '📦',
+}
+
 export default function ShopAddPage() {
   const router = useRouter()
   const [products, setProducts] = useState<Product[]>([])
@@ -15,7 +31,7 @@ export default function ShopAddPage() {
   const [isNew, setIsNew] = useState(false)
 
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
-  const [category, setCategory] = useState<ItemCategory>('วัตถุดิบ')
+  const [category, setCategory] = useState<ItemCategory>('วัตถุดิบ ร้าน Hop & Sip')
   const [unitSize, setUnitSize] = useState('')
   const [unitType, setUnitType] = useState('g')
   const [qty, setQty] = useState('')
@@ -59,7 +75,7 @@ export default function ShopAddPage() {
   function startNewProduct() {
     setSelected(null)
     setIsNew(true)
-    setCategory('วัตถุดิบ')
+    setCategory('วัตถุดิบ ร้าน Hop & Sip')
     setUnitSize('')
     setUnitType('g')
     setUnitPrice('')
@@ -121,7 +137,7 @@ export default function ShopAddPage() {
               {suggestions.map(p => (
                 <button key={p.id} type="button" onClick={() => selectProduct(p)}
                   className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-50 active:bg-purple-50 flex items-center gap-3">
-                  <span className="text-xl">{p.category === 'วัตถุดิบ' ? '🧂' : '🔧'}</span>
+                  <span className="text-xl">{CATEGORY_ICONS[p.category] ?? '📦'}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800">{p.name}</p>
                     <p className="text-xs text-gray-400">
@@ -147,13 +163,13 @@ export default function ShopAddPage() {
             {/* ประเภท */}
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <label className="block text-sm text-gray-500 mb-2">ประเภท</label>
-              <div className="flex gap-2">
-                {(['วัตถุดิบ', 'อุปกรณ์'] as ItemCategory[]).map(c => (
+              <div className="grid grid-cols-2 gap-2">
+                {(ITEM_CATEGORIES).map(c => (
                   <button key={c} type="button" onClick={() => setCategory(c)}
-                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
+                    className={`py-2.5 rounded-xl text-sm font-semibold border transition-all text-left px-3 ${
                       category === c ? 'bg-purple-100 border-purple-400 text-purple-700' : 'border-gray-200 text-gray-500'
                     }`}>
-                    {c === 'วัตถุดิบ' ? '🧂 วัตถุดิบ' : '🔧 อุปกรณ์'}
+                    {CATEGORY_ICONS[c]} {c}
                   </button>
                 ))}
               </div>

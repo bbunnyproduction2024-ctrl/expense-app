@@ -1,7 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Purchase, ItemCategory } from '@/lib/types'
+import { Purchase } from '@/lib/types'
+
+const CATEGORY_ICON: Record<string, string> = {
+  'วัตถุดิบ ร้าน Hop & Sip': '🧂',
+  'อุปกรณ์ เครื่องใช้': '🔧',
+  'อาหาร/เครื่องดื่ม': '🍽️',
+  'ค่าสัตว์เลี้ยง': '🐾',
+  'อื่นๆ (รายจ่าย)': '📦',
+}
+function catIcon(c: string) { return CATEGORY_ICON[c] ?? '📦' }
+
+type FilterCat = 'ทั้งหมด' | 'วัตถุดิบ ร้าน Hop & Sip' | 'อุปกรณ์ เครื่องใช้' | 'อาหาร/เครื่องดื่ม' | 'ค่าสัตว์เลี้ยง' | 'อื่นๆ (รายจ่าย)'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -13,7 +24,7 @@ export default function ShopHistoryPage() {
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [loading, setLoading] = useState(true)
   const [filterMonth, setFilterMonth] = useState(() => format(new Date(), 'yyyy-MM'))
-  const [filterCat, setFilterCat] = useState<ItemCategory | 'ทั้งหมด'>('ทั้งหมด')
+  const [filterCat, setFilterCat] = useState<FilterCat>('ทั้งหมด')
   const [deleting, setDeleting] = useState<string | null>(null)
 
   async function fetchData() {
@@ -40,8 +51,8 @@ export default function ShopHistoryPage() {
     .sort((a, b) => b.date.localeCompare(a.date))
 
   const totalAll = filtered.reduce((s, p) => s + p.total, 0)
-  const totalIngredient = filtered.filter(p => p.category === 'วัตถุดิบ').reduce((s, p) => s + p.total, 0)
-  const totalEquipment = filtered.filter(p => p.category === 'อุปกรณ์').reduce((s, p) => s + p.total, 0)
+  const totalIngredient = filtered.filter(p => p.category === 'วัตถุดิบ ร้าน Hop & Sip').reduce((s, p) => s + p.total, 0)
+  const totalEquipment = filtered.filter(p => p.category === 'อุปกรณ์ เครื่องใช้').reduce((s, p) => s + p.total, 0)
 
   const grouped = filtered.reduce<Record<string, Purchase[]>>((acc, p) => {
     if (!acc[p.date]) acc[p.date] = []
@@ -68,13 +79,13 @@ export default function ShopHistoryPage() {
 
       <div className="px-4 py-3 space-y-3">
         {/* Filter */}
-        <div className="flex gap-2">
-          {(['ทั้งหมด', 'วัตถุดิบ', 'อุปกรณ์'] as const).map(c => (
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+          {(['ทั้งหมด', 'วัตถุดิบ ร้าน Hop & Sip', 'อุปกรณ์ เครื่องใช้', 'อาหาร/เครื่องดื่ม', 'ค่าสัตว์เลี้ยง', 'อื่นๆ (รายจ่าย)'] as FilterCat[]).map(c => (
             <button key={c} onClick={() => setFilterCat(c)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
                 filterCat === c ? 'bg-purple-200 text-purple-800' : 'bg-white text-gray-500 border border-gray-200'
               }`}>
-              {c}
+              {c === 'ทั้งหมด' ? c : `${catIcon(c)} ${c}`}
             </button>
           ))}
         </div>
@@ -90,7 +101,7 @@ export default function ShopHistoryPage() {
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
                   {grouped[date].map(p => (
                     <div key={p.id} className="flex items-center px-4 py-3">
-                      <span className="text-lg mr-3 flex-shrink-0">{p.category === 'วัตถุดิบ' ? '🧂' : '🔧'}</span>
+                      <span className="text-lg mr-3 flex-shrink-0">{catIcon(p.category)}</span>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-800 text-sm truncate">{p.productName}</p>
                         <p className="text-gray-400 text-xs">{p.qty.toLocaleString()} {p.unit} × ฿{p.unitPrice.toLocaleString()}{p.note ? ` · ${p.note}` : ''}</p>

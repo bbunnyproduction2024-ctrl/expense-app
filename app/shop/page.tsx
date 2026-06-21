@@ -6,6 +6,15 @@ import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'da
 import { th } from 'date-fns/locale'
 import Link from 'next/link'
 
+const CATEGORY_ICON: Record<string, string> = {
+  'วัตถุดิบ ร้าน Hop & Sip': '🧂',
+  'อุปกรณ์ เครื่องใช้': '🔧',
+  'อาหาร/เครื่องดื่ม': '🍽️',
+  'ค่าสัตว์เลี้ยง': '🐾',
+  'อื่นๆ (รายจ่าย)': '📦',
+}
+function catIcon(c: string) { return CATEGORY_ICON[c] ?? '📦' }
+
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -30,8 +39,8 @@ export default function ShopDashboard() {
   })
 
   const totalAll = filtered.reduce((s, p) => s + p.total, 0)
-  const totalIngredient = filtered.filter(p => p.category === 'วัตถุดิบ').reduce((s, p) => s + p.total, 0)
-  const totalEquipment = filtered.filter(p => p.category === 'อุปกรณ์').reduce((s, p) => s + p.total, 0)
+  const totalIngredient = filtered.filter(p => p.category === 'วัตถุดิบ ร้าน Hop & Sip').reduce((s, p) => s + p.total, 0)
+  const totalEquipment = filtered.filter(p => p.category === 'อุปกรณ์ เครื่องใช้').reduce((s, p) => s + p.total, 0)
 
   // Top items this month
   const itemMap = new Map<string, { total: number; qty: number; unit: string; category: string }>()
@@ -64,11 +73,11 @@ export default function ShopDashboard() {
           <p className="text-3xl font-bold text-gray-800 mb-3">฿{fmt(totalAll)}</p>
           <div className="flex gap-3">
             <div className="flex-1 bg-orange-50 rounded-xl p-3">
-              <p className="text-orange-500 text-xs mb-0.5">🧂 วัตถุดิบ</p>
+              <p className="text-orange-500 text-xs mb-0.5">🧂 วัตถุดิบ Hop & Sip</p>
               <p className="text-orange-600 font-bold">฿{fmt(totalIngredient)}</p>
             </div>
             <div className="flex-1 bg-purple-50 rounded-xl p-3">
-              <p className="text-purple-500 text-xs mb-0.5">🔧 อุปกรณ์</p>
+              <p className="text-purple-500 text-xs mb-0.5">🔧 อุปกรณ์ เครื่องใช้</p>
               <p className="text-purple-600 font-bold">฿{fmt(totalEquipment)}</p>
             </div>
           </div>
@@ -91,7 +100,7 @@ export default function ShopDashboard() {
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
                   {topItems.map(([name, { total, qty, unit, category }]) => (
                     <div key={name} className="flex items-center px-4 py-3">
-                      <span className="text-lg mr-3">{category === 'วัตถุดิบ' ? '🧂' : '🔧'}</span>
+                      <span className="text-lg mr-3">{catIcon(category)}</span>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-800 text-sm truncate">{name}</p>
                         <p className="text-gray-400 text-xs">{qty.toLocaleString()} {unit}</p>
@@ -110,7 +119,7 @@ export default function ShopDashboard() {
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
                   {recent.map(p => (
                     <div key={p.id} className="flex items-center px-4 py-3">
-                      <span className="text-lg mr-3">{p.category === 'วัตถุดิบ' ? '🧂' : '🔧'}</span>
+                      <span className="text-lg mr-3">{catIcon(p.category)}</span>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-800 text-sm truncate">{p.productName}</p>
                         <p className="text-gray-400 text-xs">{p.date} · {p.qty} {p.unit}</p>
