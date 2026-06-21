@@ -151,7 +151,7 @@ async function ensureShopSheets() {
       spreadsheetId: SPREADSHEET_ID,
       range: `${PURCHASES_SHEET}!A1`,
       valueInputOption: 'RAW',
-      requestBody: { values: [['ID', 'Date', 'ProductName', 'Category', 'Qty', 'Unit', 'UnitPrice', 'Total', 'Note', 'Timestamp']] },
+      requestBody: { values: [['ID', 'Date', 'Store', 'ProductName', 'Category', 'Qty', 'Unit', 'UnitPrice', 'Total', 'Note', 'Timestamp']] },
     })
   }
 }
@@ -212,19 +212,20 @@ async function ensurePurchasesSheet() {
 export async function getPurchases(): Promise<Purchase[]> {
   const sheets = getSheets()
   await ensurePurchasesSheet()
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${PURCHASES_SHEET}!A2:J` })
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${PURCHASES_SHEET}!A2:K` })
   return (res.data.values ?? [])
     .map((row, i) => ({
       id: String(i + 2),
       date: row[1] ?? '',
-      productName: row[2] ?? '',
-      category: row[3] as Purchase['category'],
-      qty: Number(row[4]) || 0,
-      unit: row[5] as Purchase['unit'],
-      unitPrice: Number(row[6]) || 0,
-      total: Number(row[7]) || 0,
-      note: row[8] ?? '',
-      timestamp: row[9] ?? '',
+      store: row[2] ?? '',
+      productName: row[3] ?? '',
+      category: row[4] as Purchase['category'],
+      qty: Number(row[5]) || 0,
+      unit: row[6] as Purchase['unit'],
+      unitPrice: Number(row[7]) || 0,
+      total: Number(row[8]) || 0,
+      note: row[9] ?? '',
+      timestamp: row[10] ?? '',
     }))
     .filter(p => p.date && p.productName)
 }
@@ -246,9 +247,9 @@ export async function addPurchase(input: PurchaseInput): Promise<void> {
   const timestamp = new Date().toISOString()
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${PURCHASES_SHEET}!A:J`,
+    range: `${PURCHASES_SHEET}!A:K`,
     valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [[nextId, input.date, input.productName, input.category, input.qty, input.unit, input.unitPrice, total, input.note, timestamp]] },
+    requestBody: { values: [[nextId, input.date, input.store, input.productName, input.category, input.qty, input.unit, input.unitPrice, total, input.note, timestamp]] },
   })
   // Also record as expense in Transactions
   await addTransaction({
@@ -257,7 +258,7 @@ export async function addPurchase(input: PurchaseInput): Promise<void> {
     category: (PURCHASE_CATEGORY_MAP[input.category] ?? 'อื่นๆ (รายจ่าย)') as Transaction['category'],
     amount: total,
     paymentMethod: input.paymentMethod,
-    note: `ซื้อ ${input.productName} ${input.qty}${input.unit} (ของซื้อ)`,
+    note: `ซื้อ ${input.productName} ${input.qty}${input.unit}${input.store ? ` @${input.store}` : ''} (ของซื้อ)`,
   })
   // Update last price in Products
   await upsertProduct({ name: input.productName, category: input.category, unit: input.unit, lastPrice: input.unitPrice })

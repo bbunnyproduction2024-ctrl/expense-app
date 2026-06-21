@@ -37,6 +37,7 @@ export default function ShopAddPage() {
   const [qty, setQty] = useState('')
   const [unitPrice, setUnitPrice] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('KBank')
+  const [store, setStore] = useState('')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -91,7 +92,7 @@ export default function ShopAddPage() {
     setError('')
     try {
       const body: PurchaseInput = {
-        date, productName: search.trim(), category, qty: qtyNum, unit: unitValue, unitPrice: priceNum, paymentMethod, note
+        date, productName: search.trim(), category, qty: qtyNum, unit: unitValue, unitPrice: priceNum, paymentMethod, store, note
       }
       const res = await fetch('/api/purchases', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -348,6 +349,24 @@ export default function ShopAddPage() {
           <label className="block text-sm text-gray-500 mb-1">วันที่</label>
           <input type="date" value={date} onChange={e => setDate(e.target.value)} required
             className="w-full text-base text-gray-800 border-none outline-none bg-transparent" />
+        </div>
+
+        {/* สถานที่ซื้อ */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <label className="block text-sm text-gray-500 mb-2">🏪 ซื้อจากที่ไหน</label>
+          <div className="flex flex-wrap gap-2 mb-2">
+            {['Makro', 'โลตัส', '7-11', 'BigC', 'ตลาด'].map(s => (
+              <button key={s} type="button" onClick={() => setStore(s)}
+                className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
+                  store === s ? 'bg-purple-100 border-purple-400 text-purple-700 font-semibold' : 'border-gray-200 text-gray-600'
+                }`}>
+                {s}
+              </button>
+            ))}
+          </div>
+          <input type="text" placeholder="หรือพิมพ์เอง..." value={store}
+            onChange={e => setStore(e.target.value)}
+            className="w-full text-base text-gray-700 border-none outline-none bg-transparent" />
         </div>
 
         {/* หมายเหตุ */}

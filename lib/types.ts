@@ -72,6 +72,7 @@ export interface Purchase {
   unit: ItemUnit
   unitPrice: number
   total: number
+  store: string
   note: string
   timestamp: string
 }
@@ -84,6 +85,7 @@ export interface PurchaseInput {
   unit: ItemUnit
   unitPrice: number
   paymentMethod: PaymentMethod
+  store: string
   note: string
 }
 

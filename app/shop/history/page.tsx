@@ -104,7 +104,7 @@ export default function ShopHistoryPage() {
                       <span className="text-lg mr-3 flex-shrink-0">{catIcon(p.category)}</span>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-800 text-sm truncate">{p.productName}</p>
-                        <p className="text-gray-400 text-xs">{p.qty.toLocaleString()} {p.unit} × ฿{p.unitPrice.toLocaleString()}{p.note ? ` · ${p.note}` : ''}</p>
+                        <p className="text-gray-400 text-xs">{p.qty.toLocaleString()} {p.unit} × ฿{p.unitPrice.toLocaleString()}{p.store ? ` · ${p.store}` : ''}{p.note ? ` · ${p.note}` : ''}</p>
                       </div>
                       <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0">฿{fmt(p.total)}</p>
                       <button onClick={() => handleDelete(p)} disabled={deleting === p.id}
