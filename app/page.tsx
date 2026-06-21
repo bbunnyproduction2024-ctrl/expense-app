@@ -86,12 +86,12 @@ export default function DashboardPage() {
           </p>
           <div className="flex gap-3">
             <div className="flex-1 bg-green-500/20 rounded-xl p-3">
-              <p className="text-green-300 text-xs mb-0.5">รายรับ</p>
-              <p className="text-green-300 font-bold text-lg">฿{formatBaht(totalIncome)}</p>
+              <p className="text-green-700 text-xs mb-0.5">รายรับ</p>
+              <p className="text-green-700 font-bold text-lg">฿{formatBaht(totalIncome)}</p>
             </div>
             <div className="flex-1 bg-red-500/20 rounded-xl p-3">
-              <p className="text-red-300 text-xs mb-0.5">รายจ่าย</p>
-              <p className="text-red-300 font-bold text-lg">฿{formatBaht(totalExpense)}</p>
+              <p className="text-red-700 text-xs mb-0.5">รายจ่าย</p>
+              <p className="text-red-700 font-bold text-lg">฿{formatBaht(totalExpense)}</p>
             </div>
           </div>
         </div>
