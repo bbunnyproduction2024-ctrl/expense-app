@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Product, ItemCategory, ItemUnit, PurchaseInput } from '@/lib/types'
+import { Product, ItemCategory, PurchaseInput } from '@/lib/types'
 import { format } from 'date-fns'
 
-const UNITS: ItemUnit[] = ['g', 'ml', 'ชิ้น/อัน', 'กล่อง/ถุง/แพ็ค']
+const UNIT_TYPES = ['g', 'ml', 'ชิ้น/อัน', 'กล่อง/ถุง/แพ็ค']
 
 export default function ShopAddPage() {
   const router = useRouter()
@@ -16,7 +16,8 @@ export default function ShopAddPage() {
 
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [category, setCategory] = useState<ItemCategory>('วัตถุดิบ')
-  const [unit, setUnit] = useState<ItemUnit>('ชิ้น/อัน')
+  const [unitSize, setUnitSize] = useState('')      // เลข เช่น "5000"
+  const [unitType, setUnitType] = useState('g')    // ประเภท เช่น "g"
   const [qty, setQty] = useState('')
   const [unitPrice, setUnitPrice] = useState('')
   const [note, setNote] = useState('')
@@ -26,6 +27,16 @@ export default function ShopAddPage() {
   useEffect(() => {
     fetch('/api/products').then(r => r.json()).then(d => setProducts(Array.isArray(d) ? d : []))
   }, [])
+
+  // รวม unit เป็น string เช่น "5000g" หรือ "30ชิ้น/อัน"
+  const unitValue = unitSize ? `${unitSize}${unitType}` : unitType
+
+  function parseStoredUnit(unit: string) {
+    // แยก "5000g" → size="5000", type="g"
+    const match = unit.match(/^(\d+\.?\d*)(.+)$/)
+    if (match) return { size: match[1], type: match[2] }
+    return { size: '', type: unit }
+  }
 
   const suggestions = search.length >= 1
     ? products.filter(p => p.name.toLowerCase().includes(search.toLowerCase())).slice(0, 6)
@@ -37,7 +48,9 @@ export default function ShopAddPage() {
     setSelected(p)
     setSearch(p.name)
     setCategory(p.category)
-    setUnit(p.unit)
+    const parsed = parseStoredUnit(p.unit)
+    setUnitSize(parsed.size)
+    setUnitType(UNIT_TYPES.includes(parsed.type) ? parsed.type : 'g')
     if (p.lastPrice > 0) setUnitPrice(String(p.lastPrice))
     setIsNew(false)
   }
@@ -46,7 +59,8 @@ export default function ShopAddPage() {
     setSelected(null)
     setIsNew(true)
     setCategory('วัตถุดิบ')
-    setUnit('ชิ้น/อัน')
+    setUnitSize('')
+    setUnitType('g')
     setUnitPrice('')
   }
 
@@ -62,7 +76,7 @@ export default function ShopAddPage() {
     setError('')
     try {
       const body: PurchaseInput = {
-        date, productName: search.trim(), category, qty: qtyNum, unit, unitPrice: priceNum, note
+        date, productName: search.trim(), category, qty: qtyNum, unit: unitValue, unitPrice: priceNum, note
       }
       const res = await fetch('/api/purchases', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -144,31 +158,51 @@ export default function ShopAddPage() {
               </div>
             </div>
 
-            {/* หน่วยของสินค้า */}
+            {/* หน่วยของสินค้า = ตัวเลข + ประเภท */}
             <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <label className="block text-sm text-gray-500 mb-0.5">หน่วยของสินค้า</label>
-              <p className="text-xs text-gray-400 mb-3">บอกว่าสินค้านี้นับเป็นอะไร เช่น นม 5000g — ไม่เกี่ยวกับราคา</p>
-              <div className="grid grid-cols-2 gap-2">
-                {UNITS.map(u => (
-                  <button key={u} type="button" onClick={() => setUnit(u)}
-                    className={`py-2.5 rounded-xl text-sm border transition-all ${
-                      unit === u ? 'bg-purple-100 border-purple-400 text-purple-700 font-semibold' : 'border-gray-200 text-gray-600'
+              <label className="block text-sm text-gray-500 mb-0.5">ขนาด / หน่วยของสินค้า</label>
+              <p className="text-xs text-gray-400 mb-3">เช่น นม 5000g — ไม่เกี่ยวกับราคา</p>
+
+              {/* ตัวเลขขนาด */}
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="number" inputMode="decimal" placeholder="เช่น 5000"
+                  value={unitSize} onChange={e => setUnitSize(e.target.value)}
+                  className="flex-1 text-2xl font-bold text-gray-800 border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-purple-400"
+                />
+                <div className="bg-purple-100 text-purple-700 font-bold text-lg px-4 py-2 rounded-xl min-w-[80px] text-center">
+                  {unitType}
+                </div>
+              </div>
+
+              {/* ประเภทหน่วย */}
+              <div className="grid grid-cols-4 gap-2">
+                {UNIT_TYPES.map(u => (
+                  <button key={u} type="button" onClick={() => setUnitType(u)}
+                    className={`py-2 rounded-xl text-xs border transition-all ${
+                      unitType === u ? 'bg-purple-100 border-purple-400 text-purple-700 font-semibold' : 'border-gray-200 text-gray-600'
                     }`}>
                     {u}
                   </button>
                 ))}
               </div>
+
+              {/* Preview */}
+              {(unitSize || unitType) && (
+                <p className="mt-2 text-sm text-gray-500">
+                  หน่วยที่บันทึก: <span className="font-semibold text-purple-700">{unitValue}</span>
+                </p>
+              )}
             </div>
 
             {/* จำนวนและราคา */}
             <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
-              {/* จำนวนชิ้น */}
               <div>
                 <label className="block text-sm text-gray-500 mb-2">ซื้อมากี่ชิ้น / กี่กล่อง?</label>
                 <div className="flex items-center gap-3">
                   <button type="button"
                     onClick={() => setQty(v => String(Math.max(1, (parseInt(v) || 0) - 1)))}
-                    className="w-11 h-11 rounded-full bg-gray-100 text-2xl font-light text-gray-600 flex items-center justify-center flex-shrink-0 active:bg-gray-200">
+                    className="w-11 h-11 rounded-full bg-gray-100 text-2xl text-gray-600 flex items-center justify-center flex-shrink-0 active:bg-gray-200">
                     −
                   </button>
                   <input type="number" inputMode="numeric" step="1" min="1" placeholder="0" value={qty}
@@ -176,13 +210,12 @@ export default function ShopAddPage() {
                     className="flex-1 text-4xl font-bold text-gray-800 text-center border-none outline-none bg-transparent" />
                   <button type="button"
                     onClick={() => setQty(v => String((parseInt(v) || 0) + 1))}
-                    className="w-11 h-11 rounded-full bg-gray-100 text-2xl font-light text-gray-600 flex items-center justify-center flex-shrink-0 active:bg-gray-200">
+                    className="w-11 h-11 rounded-full bg-gray-100 text-2xl text-gray-600 flex items-center justify-center flex-shrink-0 active:bg-gray-200">
                     +
                   </button>
                 </div>
               </div>
 
-              {/* ราคาต่อชิ้น */}
               <div className="border-t border-gray-100 pt-4">
                 <label className="block text-sm text-gray-500 mb-1">
                   ราคาต่อ 1 ชิ้น (฿)
@@ -195,7 +228,6 @@ export default function ShopAddPage() {
                   className="w-full text-3xl font-bold text-gray-800 border-none outline-none bg-transparent" />
               </div>
 
-              {/* ยอดรวม */}
               {total > 0 && (
                 <div className="border-t border-gray-100 pt-3">
                   <div className="bg-purple-50 rounded-xl p-3 flex justify-between items-center">

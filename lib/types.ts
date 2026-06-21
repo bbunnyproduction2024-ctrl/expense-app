@@ -52,7 +52,7 @@ export interface MonthlySummary {
 
 // ---- Purchase tracker ----
 export type ItemCategory = 'วัตถุดิบ' | 'อุปกรณ์'
-export type ItemUnit = 'g' | 'ml' | 'ชิ้น/อัน' | 'กล่อง/ถุง/แพ็ค'
+export type ItemUnit = string  // e.g. "5000g", "500ml", "30ชิ้น/อัน"
 
 export interface Product {
   id: string
