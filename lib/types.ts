@@ -47,5 +47,48 @@ export interface MonthlySummary {
   totalIncome: number
   totalExpense: number
   balance: number
-  month: string // YYYY-MM
+  month: string
+}
+
+// ---- Purchase tracker ----
+export type ItemCategory = 'วัตถุดิบ' | 'อุปกรณ์'
+export type ItemUnit = 'g' | 'ml' | 'ชิ้น/อัน' | 'กล่อง/ถุง/แพ็ค'
+
+export interface Product {
+  id: string
+  name: string
+  category: ItemCategory
+  unit: ItemUnit
+  lastPrice: number
+  updatedAt: string
+}
+
+export interface Purchase {
+  id: string
+  date: string
+  productName: string
+  category: ItemCategory
+  qty: number
+  unit: ItemUnit
+  unitPrice: number
+  total: number
+  note: string
+  timestamp: string
+}
+
+export interface PurchaseInput {
+  date: string
+  productName: string
+  category: ItemCategory
+  qty: number
+  unit: ItemUnit
+  unitPrice: number
+  note: string
+}
+
+export interface ProductInput {
+  name: string
+  category: ItemCategory
+  unit: ItemUnit
+  lastPrice: number
 }
