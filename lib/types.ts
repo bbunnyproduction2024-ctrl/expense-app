@@ -83,6 +83,7 @@ export interface PurchaseInput {
   qty: number
   unit: ItemUnit
   unitPrice: number
+  paymentMethod: PaymentMethod
   note: string
 }
 

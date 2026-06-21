@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Product, ItemCategory, PurchaseInput } from '@/lib/types'
+import { Product, ItemCategory, PaymentMethod, PurchaseInput } from '@/lib/types'
 import { format } from 'date-fns'
 
 const UNIT_TYPES = ['g', 'ml', 'ชิ้น/อัน', 'กล่อง/ถุง/แพ็ค']
@@ -16,10 +16,11 @@ export default function ShopAddPage() {
 
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [category, setCategory] = useState<ItemCategory>('วัตถุดิบ')
-  const [unitSize, setUnitSize] = useState('')      // เลข เช่น "5000"
-  const [unitType, setUnitType] = useState('g')    // ประเภท เช่น "g"
+  const [unitSize, setUnitSize] = useState('')
+  const [unitType, setUnitType] = useState('g')
   const [qty, setQty] = useState('')
   const [unitPrice, setUnitPrice] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('เงินสด')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -76,7 +77,7 @@ export default function ShopAddPage() {
     setError('')
     try {
       const body: PurchaseInput = {
-        date, productName: search.trim(), category, qty: qtyNum, unit: unitValue, unitPrice: priceNum, note
+        date, productName: search.trim(), category, qty: qtyNum, unit: unitValue, unitPrice: priceNum, paymentMethod, note
       }
       const res = await fetch('/api/purchases', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -153,6 +154,21 @@ export default function ShopAddPage() {
                       category === c ? 'bg-purple-100 border-purple-400 text-purple-700' : 'border-gray-200 text-gray-500'
                     }`}>
                     {c === 'วัตถุดิบ' ? '🧂 วัตถุดิบ' : '🔧 อุปกรณ์'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ช่องทางชำระเงิน */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <label className="block text-sm text-gray-500 mb-2">ช่องทางชำระเงิน</label>
+              <div className="flex gap-2">
+                {(['เงินสด', 'KBank'] as PaymentMethod[]).map(m => (
+                  <button key={m} type="button" onClick={() => setPaymentMethod(m)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
+                      paymentMethod === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'border-gray-200 text-gray-500'
+                    }`}>
+                    {m === 'เงินสด' ? '💵 เงินสด' : '🏦 KBank'}
                   </button>
                 ))}
               </div>

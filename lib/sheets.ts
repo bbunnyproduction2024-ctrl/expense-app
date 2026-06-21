@@ -229,6 +229,11 @@ export async function getPurchases(): Promise<Purchase[]> {
     .filter(p => p.date && p.productName)
 }
 
+const PURCHASE_CATEGORY_MAP: Record<string, string> = {
+  'วัตถุดิบ': 'วัตถุดิบร้าน Hop & Sip',
+  'อุปกรณ์': 'อื่นๆ (รายจ่าย)',
+}
+
 export async function addPurchase(input: PurchaseInput): Promise<void> {
   const sheets = getSheets()
   await ensurePurchasesSheet()
@@ -241,6 +246,15 @@ export async function addPurchase(input: PurchaseInput): Promise<void> {
     range: `${PURCHASES_SHEET}!A:J`,
     valueInputOption: 'USER_ENTERED',
     requestBody: { values: [[nextId, input.date, input.productName, input.category, input.qty, input.unit, input.unitPrice, total, input.note, timestamp]] },
+  })
+  // Also record as expense in Transactions
+  await addTransaction({
+    date: input.date,
+    type: 'รายจ่าย',
+    category: (PURCHASE_CATEGORY_MAP[input.category] ?? 'อื่นๆ (รายจ่าย)') as Transaction['category'],
+    amount: total,
+    paymentMethod: input.paymentMethod,
+    note: `ซื้อ ${input.productName} ${input.qty}${input.unit} (ของซื้อ)`,
   })
   // Update last price in Products
   await upsertProduct({ name: input.productName, category: input.category, unit: input.unit, lastPrice: input.unitPrice })
