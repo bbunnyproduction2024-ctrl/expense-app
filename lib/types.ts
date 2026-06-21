@@ -1,4 +1,5 @@
 export type TransactionType = 'รายรับ' | 'รายจ่าย'
+export type PaymentMethod = 'เงินสด' | 'KBank'
 
 export const INCOME_CATEGORIES = [
   'ร้าน Hop & Sip',
@@ -23,13 +24,14 @@ export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number]
 export type Category = IncomeCategory | ExpenseCategory
 
 export interface Transaction {
-  id: string        // row index in sheet (1-based)
-  date: string      // YYYY-MM-DD
+  id: string
+  date: string
   type: TransactionType
   category: Category
   amount: number
+  paymentMethod: PaymentMethod
   note: string
-  timestamp: string // ISO datetime
+  timestamp: string
 }
 
 export interface TransactionInput {
@@ -37,6 +39,7 @@ export interface TransactionInput {
   type: TransactionType
   category: Category
   amount: number
+  paymentMethod: PaymentMethod
   note: string
 }
 

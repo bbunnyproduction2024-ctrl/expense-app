@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { TransactionType, INCOME_CATEGORIES, EXPENSE_CATEGORIES, Category } from '@/lib/types'
+import { TransactionType, PaymentMethod, INCOME_CATEGORIES, EXPENSE_CATEGORIES, Category } from '@/lib/types'
 import { format } from 'date-fns'
 
 export default function AddPage() {
@@ -11,6 +11,7 @@ export default function AddPage() {
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [category, setCategory] = useState<Category>(INCOME_CATEGORIES[0])
   const [amount, setAmount] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('เงินสด')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -37,7 +38,7 @@ export default function AddPage() {
       const res = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, type, category, amount: amountNum, note }),
+        body: JSON.stringify({ date, type, category, amount: amountNum, paymentMethod, note }),
       })
 
       if (!res.ok) throw new Error('Failed')
@@ -65,9 +66,7 @@ export default function AddPage() {
             type="button"
             onClick={() => handleTypeChange('รายรับ')}
             className={`flex-1 py-3 rounded-xl font-semibold text-base transition-all ${
-              isIncome
-                ? 'bg-green-600 text-white shadow-sm'
-                : 'text-gray-400'
+              isIncome ? 'bg-green-600 text-white shadow-sm' : 'text-gray-400'
             }`}
           >
             💰 รายรับ
@@ -76,9 +75,7 @@ export default function AddPage() {
             type="button"
             onClick={() => handleTypeChange('รายจ่าย')}
             className={`flex-1 py-3 rounded-xl font-semibold text-base transition-all ${
-              !isIncome
-                ? 'bg-red-600 text-white shadow-sm'
-                : 'text-gray-400'
+              !isIncome ? 'bg-red-600 text-white shadow-sm' : 'text-gray-400'
             }`}
           >
             💸 รายจ่าย
@@ -99,6 +96,27 @@ export default function AddPage() {
               required
               className="flex-1 text-3xl font-bold text-gray-800 border-none outline-none bg-transparent"
             />
+          </div>
+        </div>
+
+        {/* Payment Method */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <label className="block text-sm text-gray-500 mb-2">ช่องทาง</label>
+          <div className="flex gap-2">
+            {(['เงินสด', 'KBank'] as PaymentMethod[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setPaymentMethod(m)}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
+                  paymentMethod === m
+                    ? 'bg-sky-100 border-sky-400 text-sky-700'
+                    : 'border-gray-200 text-gray-500'
+                }`}
+              >
+                {m === 'เงินสด' ? '💵 เงินสด' : '🏦 KBank'}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -149,9 +167,7 @@ export default function AddPage() {
           />
         </div>
 
-        {error && (
-          <p className="text-red-600 text-sm text-center">{error}</p>
-        )}
+        {error && <p className="text-red-600 text-sm text-center">{error}</p>}
 
         {/* Submit */}
         <button

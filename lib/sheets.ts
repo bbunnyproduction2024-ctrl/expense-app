@@ -20,11 +20,11 @@ function getSheets() {
 // Ensure header row exists
 export async function ensureSheet() {
   const sheets = getSheets()
-  const header = [['ID', 'Date', 'Type', 'Category', 'Amount', 'Note', 'Timestamp']]
+  const header = [['ID', 'Date', 'Type', 'Category', 'Amount', 'PaymentMethod', 'Note', 'Timestamp']]
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A1:G1`,
+    range: `${SHEET_NAME}!A1:H1`,
   })
 
   if (!res.data.values || res.data.values.length === 0) {
@@ -42,19 +42,20 @@ export async function getTransactions(): Promise<Transaction[]> {
 
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A2:G`,
+    range: `${SHEET_NAME}!A2:H`,
   })
 
   const rows = res.data.values ?? []
   return rows
     .map((row, index) => ({
-      id: String(index + 2), // row number in sheet (1-based, skip header)
+      id: String(index + 2),
       date: row[1] ?? '',
       type: row[2] as Transaction['type'],
       category: row[3] as Transaction['category'],
       amount: Number(row[4]) || 0,
-      note: row[5] ?? '',
-      timestamp: row[6] ?? '',
+      paymentMethod: (row[5] ?? 'เงินสด') as Transaction['paymentMethod'],
+      note: row[6] ?? '',
+      timestamp: row[7] ?? '',
     }))
     .filter((t) => t.date && t.type)
 }
@@ -71,7 +72,7 @@ export async function addTransaction(input: TransactionInput): Promise<void> {
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A:G`,
+    range: `${SHEET_NAME}!A:H`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [[
@@ -80,6 +81,7 @@ export async function addTransaction(input: TransactionInput): Promise<void> {
         input.type,
         input.category,
         input.amount,
+        input.paymentMethod,
         input.note,
         timestamp,
       ]],

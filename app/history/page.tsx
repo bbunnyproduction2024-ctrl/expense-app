@@ -133,7 +133,10 @@ export default function HistoryPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-800 text-sm truncate">{t.category}</p>
-                        {t.note && <p className="text-gray-400 text-xs truncate">{t.note}</p>}
+                        <p className="text-gray-400 text-xs truncate">
+                          {t.paymentMethod === 'KBank' ? '🏦 KBank' : '💵 เงินสด'}
+                          {t.note ? ` · ${t.note}` : ''}
+                        </p>
                       </div>
                       <p className={`font-semibold text-sm mr-3 flex-shrink-0 ${t.type === 'รายรับ' ? 'text-green-600' : 'text-red-500'}`}>
                         {t.type === 'รายรับ' ? '+' : '-'}฿{formatBaht(t.amount)}
