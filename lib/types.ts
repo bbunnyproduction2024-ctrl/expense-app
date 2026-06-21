@@ -4,7 +4,7 @@ export type PaymentMethod = 'เงินสด' | 'KBank'
 export const INCOME_CATEGORIES = [
   'ร้าน Hop & Sip',
   'ห้องพัก/Guesthouse',
-  'อาหาร',
+  'Mom_Jay',
   'อื่นๆ (รายรับ)',
 ] as const
 
