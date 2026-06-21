@@ -36,7 +36,7 @@ export default function ShopAddPage() {
   const [unitType, setUnitType] = useState('g')
   const [qty, setQty] = useState('')
   const [unitPrice, setUnitPrice] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('เงินสด')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('KBank')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -45,11 +45,9 @@ export default function ShopAddPage() {
     fetch('/api/products').then(r => r.json()).then(d => setProducts(Array.isArray(d) ? d : []))
   }, [])
 
-  // รวม unit เป็น string เช่น "5000g" หรือ "30ชิ้น/อัน"
   const unitValue = unitSize ? `${unitSize}${unitType}` : unitType
 
   function parseStoredUnit(unit: string) {
-    // แยก "5000g" → size="5000", type="g"
     const match = unit.match(/^(\d+\.?\d*)(.+)$/)
     if (match) return { size: match[1], type: match[2] }
     return { size: '', type: unit }
@@ -64,7 +62,7 @@ export default function ShopAddPage() {
   function selectProduct(p: Product) {
     setSelected(p)
     setSearch(p.name)
-    setCategory(p.category)
+    setCategory(p.category as ItemCategory)
     const parsed = parseStoredUnit(p.unit)
     setUnitSize(parsed.size)
     setUnitType(UNIT_TYPES.includes(parsed.type) ? parsed.type : 'g')
@@ -137,7 +135,7 @@ export default function ShopAddPage() {
               {suggestions.map(p => (
                 <button key={p.id} type="button" onClick={() => selectProduct(p)}
                   className="w-full text-left px-3 py-2 rounded-xl hover:bg-gray-50 active:bg-purple-50 flex items-center gap-3">
-                  <span className="text-xl">{CATEGORY_ICONS[p.category] ?? '📦'}</span>
+                  <span className="text-xl">{CATEGORY_ICONS[p.category as ItemCategory] ?? '📦'}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800">{p.name}</p>
                     <p className="text-xs text-gray-400">
@@ -158,13 +156,92 @@ export default function ShopAddPage() {
           )}
         </div>
 
-        {showForm && (
+        {/* สินค้าที่เลือก — แสดงข้อมูลอย่างเดียว แก้ได้แค่ราคา */}
+        {selected && (
           <>
-            {/* ประเภท */}
+            <div className="bg-purple-50 border border-purple-200 rounded-2xl p-4">
+              <p className="text-xs text-purple-400 mb-1">ข้อมูลสินค้า</p>
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{CATEGORY_ICONS[selected.category as ItemCategory] ?? '📦'}</span>
+                <div>
+                  <p className="font-bold text-gray-800">{selected.name}</p>
+                  <p className="text-sm text-gray-500">{selected.category} · หน่วย {selected.unit}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* ช่องทางชำระเงิน */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <label className="block text-sm text-gray-500 mb-2">ช่องทางชำระเงิน</label>
+              <div className="flex gap-2">
+                {(['KBank', 'เงินสด'] as PaymentMethod[]).map(m => (
+                  <button key={m} type="button" onClick={() => setPaymentMethod(m)}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
+                      paymentMethod === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'border-gray-200 text-gray-500'
+                    }`}>
+                    {m === 'เงินสด' ? '💵 เงินสด' : '🏦 KBank'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* จำนวนและราคา */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
+              <div>
+                <label className="block text-sm text-gray-500 mb-2">ซื้อมากี่ชิ้น / กี่กล่อง?</label>
+                <div className="flex items-center gap-3">
+                  <button type="button"
+                    onClick={() => setQty(v => String(Math.max(1, (parseInt(v) || 0) - 1)))}
+                    className="w-11 h-11 rounded-full bg-gray-100 text-2xl text-gray-600 flex items-center justify-center flex-shrink-0 active:bg-gray-200">
+                    −
+                  </button>
+                  <input type="number" inputMode="numeric" step="1" min="1" placeholder="0" value={qty}
+                    onChange={e => setQty(e.target.value)}
+                    className="flex-1 text-4xl font-bold text-gray-800 text-center border-none outline-none bg-transparent" />
+                  <button type="button"
+                    onClick={() => setQty(v => String((parseInt(v) || 0) + 1))}
+                    className="w-11 h-11 rounded-full bg-gray-100 text-2xl text-gray-600 flex items-center justify-center flex-shrink-0 active:bg-gray-200">
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4">
+                <label className="block text-sm text-gray-500 mb-1">
+                  ราคาต่อ 1 ชิ้น (฿)
+                  {selected.lastPrice > 0 && (
+                    <span className="ml-2 text-purple-400 font-normal">ครั้งก่อน ฿{selected.lastPrice.toLocaleString()}</span>
+                  )}
+                </label>
+                <input type="number" inputMode="decimal" placeholder="0.00" value={unitPrice}
+                  onChange={e => setUnitPrice(e.target.value)}
+                  className="w-full text-3xl font-bold text-gray-800 border-none outline-none bg-transparent" />
+              </div>
+
+              {total > 0 && (
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="bg-purple-50 rounded-xl p-3 flex justify-between items-center">
+                    <div>
+                      <p className="text-xs text-gray-400">{qtyNum} ชิ้น × ฿{priceNum.toLocaleString()}</p>
+                      <p className="text-sm text-gray-500 font-medium">ยอดรวม</p>
+                    </div>
+                    <span className="text-2xl font-bold text-purple-700">
+                      ฿{total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* สินค้าใหม่ — แสดงฟอร์มเต็ม */}
+        {isNew && (
+          <>
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <label className="block text-sm text-gray-500 mb-2">ประเภท</label>
               <div className="grid grid-cols-2 gap-2">
-                {(ITEM_CATEGORIES).map(c => (
+                {ITEM_CATEGORIES.map(c => (
                   <button key={c} type="button" onClick={() => setCategory(c)}
                     className={`py-2.5 rounded-xl text-sm font-semibold border transition-all text-left px-3 ${
                       category === c ? 'bg-purple-100 border-purple-400 text-purple-700' : 'border-gray-200 text-gray-500'
@@ -179,7 +256,7 @@ export default function ShopAddPage() {
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <label className="block text-sm text-gray-500 mb-2">ช่องทางชำระเงิน</label>
               <div className="flex gap-2">
-                {(['เงินสด', 'KBank'] as PaymentMethod[]).map(m => (
+                {(['KBank', 'เงินสด'] as PaymentMethod[]).map(m => (
                   <button key={m} type="button" onClick={() => setPaymentMethod(m)}
                     className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
                       paymentMethod === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'border-gray-200 text-gray-500'
@@ -190,12 +267,10 @@ export default function ShopAddPage() {
               </div>
             </div>
 
-            {/* หน่วยของสินค้า = ตัวเลข + ประเภท */}
+            {/* หน่วยของสินค้า */}
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <label className="block text-sm text-gray-500 mb-0.5">ขนาด / หน่วยของสินค้า</label>
               <p className="text-xs text-gray-400 mb-3">เช่น นม 5000g — ไม่เกี่ยวกับราคา</p>
-
-              {/* ตัวเลขขนาด */}
               <div className="flex items-center gap-2 mb-3">
                 <input
                   type="number" inputMode="decimal" placeholder="เช่น 5000"
@@ -206,8 +281,6 @@ export default function ShopAddPage() {
                   {unitType}
                 </div>
               </div>
-
-              {/* ประเภทหน่วย */}
               <div className="grid grid-cols-4 gap-2">
                 {UNIT_TYPES.map(u => (
                   <button key={u} type="button" onClick={() => setUnitType(u)}
@@ -218,8 +291,6 @@ export default function ShopAddPage() {
                   </button>
                 ))}
               </div>
-
-              {/* Preview */}
               {(unitSize || unitType) && (
                 <p className="mt-2 text-sm text-gray-500">
                   หน่วยที่บันทึก: <span className="font-semibold text-purple-700">{unitValue}</span>
@@ -249,12 +320,7 @@ export default function ShopAddPage() {
               </div>
 
               <div className="border-t border-gray-100 pt-4">
-                <label className="block text-sm text-gray-500 mb-1">
-                  ราคาต่อ 1 ชิ้น (฿)
-                  {selected && selected.lastPrice > 0 && (
-                    <span className="ml-2 text-purple-400 font-normal">ครั้งก่อน ฿{selected.lastPrice.toLocaleString()}</span>
-                  )}
-                </label>
+                <label className="block text-sm text-gray-500 mb-1">ราคาต่อ 1 ชิ้น (฿)</label>
                 <input type="number" inputMode="decimal" placeholder="0.00" value={unitPrice}
                   onChange={e => setUnitPrice(e.target.value)}
                   className="w-full text-3xl font-bold text-gray-800 border-none outline-none bg-transparent" />
