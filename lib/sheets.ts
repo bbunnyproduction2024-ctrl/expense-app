@@ -122,6 +122,23 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
 
 async function ensureProductsSheet() {
   const sheets = getSheets()
+  // Check if tab exists
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+  const exists = meta.data.sheets?.some(s => s.properties?.title === PRODUCTS_SHEET)
+  if (!exists) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: { requests: [{ addSheet: { properties: { title: PRODUCTS_SHEET } } }] },
+    })
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${PRODUCTS_SHEET}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [['ID', 'Name', 'Category', 'Unit', 'LastPrice', 'UpdatedAt']] },
+    })
+    return
+  }
+  // Tab exists — ensure header
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${PRODUCTS_SHEET}!A1:F1` })
   if (!res.data.values || res.data.values.length === 0) {
     await sheets.spreadsheets.values.update({
@@ -180,6 +197,21 @@ export async function upsertProduct(input: ProductInput): Promise<void> {
 
 async function ensurePurchasesSheet() {
   const sheets = getSheets()
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+  const exists = meta.data.sheets?.some(s => s.properties?.title === PURCHASES_SHEET)
+  if (!exists) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: { requests: [{ addSheet: { properties: { title: PURCHASES_SHEET } } }] },
+    })
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${PURCHASES_SHEET}!A1`,
+      valueInputOption: 'RAW',
+      requestBody: { values: [['ID', 'Date', 'ProductName', 'Category', 'Qty', 'Unit', 'UnitPrice', 'Total', 'Note', 'Timestamp']] },
+    })
+    return
+  }
   const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${PURCHASES_SHEET}!A1:J1` })
   if (!res.data.values || res.data.values.length === 0) {
     await sheets.spreadsheets.values.update({
