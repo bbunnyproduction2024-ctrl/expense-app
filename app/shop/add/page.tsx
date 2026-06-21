@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Product, ItemCategory, ItemUnit, PurchaseInput } from '@/lib/types'
 import { format } from 'date-fns'
 
-const UNITS: ItemUnit[] = ['ชิ้น', 'กล่อง', 'ถุง', 'ขวด', 'แพ็ค', 'อื่นๆ']
+const UNITS: ItemUnit[] = ['g', 'ml', 'ชิ้น/อัน', 'กล่อง/ถุง/แพ็ค']
 
 export default function ShopAddPage() {
   const router = useRouter()
@@ -16,7 +16,7 @@ export default function ShopAddPage() {
 
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [category, setCategory] = useState<ItemCategory>('วัตถุดิบ')
-  const [unit, setUnit] = useState<ItemUnit>('ชิ้น')
+  const [unit, setUnit] = useState<ItemUnit>('ชิ้น/อัน')
   const [qty, setQty] = useState('')
   const [unitPrice, setUnitPrice] = useState('')
   const [note, setNote] = useState('')
@@ -38,7 +38,6 @@ export default function ShopAddPage() {
     setSearch(p.name)
     setCategory(p.category)
     setUnit(p.unit)
-    // auto-fill ราคาล่าสุด ถ้ามี
     if (p.lastPrice > 0) setUnitPrice(String(p.lastPrice))
     setIsNew(false)
   }
@@ -47,13 +46,13 @@ export default function ShopAddPage() {
     setSelected(null)
     setIsNew(true)
     setCategory('วัตถุดิบ')
-    setUnit('ชิ้น')
+    setUnit('ชิ้น/อัน')
     setUnitPrice('')
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const qtyNum = parseFloat(qty)
+    const qtyNum = parseInt(qty)
     const priceNum = parseFloat(unitPrice)
     if (!search.trim() || !qtyNum || !priceNum) {
       setError('กรุณากรอกข้อมูลให้ครบ')
@@ -76,7 +75,9 @@ export default function ShopAddPage() {
     }
   }
 
-  const total = (parseFloat(qty) || 0) * (parseFloat(unitPrice) || 0)
+  const qtyNum = parseInt(qty) || 0
+  const priceNum = parseFloat(unitPrice) || 0
+  const total = qtyNum * priceNum
   const showForm = selected || isNew
 
   return (
@@ -126,9 +127,9 @@ export default function ShopAddPage() {
           )}
         </div>
 
-        {/* ประเภท & หน่วย — เฉพาะเมื่อเลือก/เพิ่มใหม่ */}
         {showForm && (
           <>
+            {/* ประเภท */}
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <label className="block text-sm text-gray-500 mb-2">ประเภท</label>
               <div className="flex gap-2">
@@ -143,12 +144,14 @@ export default function ShopAddPage() {
               </div>
             </div>
 
+            {/* หน่วยของสินค้า */}
             <div className="bg-white rounded-2xl p-4 shadow-sm">
-              <label className="block text-sm text-gray-500 mb-2">หน่วยนับ</label>
-              <div className="grid grid-cols-3 gap-2">
+              <label className="block text-sm text-gray-500 mb-0.5">หน่วยของสินค้า</label>
+              <p className="text-xs text-gray-400 mb-3">บอกว่าสินค้านี้นับเป็นอะไร เช่น นม 5000g — ไม่เกี่ยวกับราคา</p>
+              <div className="grid grid-cols-2 gap-2">
                 {UNITS.map(u => (
                   <button key={u} type="button" onClick={() => setUnit(u)}
-                    className={`py-2 rounded-xl text-sm border transition-all ${
+                    className={`py-2.5 rounded-xl text-sm border transition-all ${
                       unit === u ? 'bg-purple-100 border-purple-400 text-purple-700 font-semibold' : 'border-gray-200 text-gray-600'
                     }`}>
                     {u}
@@ -157,31 +160,53 @@ export default function ShopAddPage() {
               </div>
             </div>
 
-            {/* จำนวน & ราคา */}
-            <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+            {/* จำนวนและราคา */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm space-y-4">
+              {/* จำนวนชิ้น */}
               <div>
-                <label className="block text-sm text-gray-500 mb-1">จำนวน ({unit})</label>
-                <input type="number" inputMode="decimal" placeholder="0" value={qty}
-                  onChange={e => setQty(e.target.value)} required
-                  className="w-full text-3xl font-bold text-gray-800 border-none outline-none bg-transparent" />
+                <label className="block text-sm text-gray-500 mb-2">ซื้อมากี่ชิ้น / กี่กล่อง?</label>
+                <div className="flex items-center gap-3">
+                  <button type="button"
+                    onClick={() => setQty(v => String(Math.max(1, (parseInt(v) || 0) - 1)))}
+                    className="w-11 h-11 rounded-full bg-gray-100 text-2xl font-light text-gray-600 flex items-center justify-center flex-shrink-0 active:bg-gray-200">
+                    −
+                  </button>
+                  <input type="number" inputMode="numeric" step="1" min="1" placeholder="0" value={qty}
+                    onChange={e => setQty(e.target.value)}
+                    className="flex-1 text-4xl font-bold text-gray-800 text-center border-none outline-none bg-transparent" />
+                  <button type="button"
+                    onClick={() => setQty(v => String((parseInt(v) || 0) + 1))}
+                    className="w-11 h-11 rounded-full bg-gray-100 text-2xl font-light text-gray-600 flex items-center justify-center flex-shrink-0 active:bg-gray-200">
+                    +
+                  </button>
+                </div>
               </div>
-              <div className="border-t border-gray-100 pt-3">
+
+              {/* ราคาต่อชิ้น */}
+              <div className="border-t border-gray-100 pt-4">
                 <label className="block text-sm text-gray-500 mb-1">
-                  ราคาต่อ{unit} (฿)
+                  ราคาต่อ 1 ชิ้น (฿)
                   {selected && selected.lastPrice > 0 && (
-                    <span className="ml-2 text-purple-400">ครั้งก่อน ฿{selected.lastPrice.toLocaleString()}</span>
+                    <span className="ml-2 text-purple-400 font-normal">ครั้งก่อน ฿{selected.lastPrice.toLocaleString()}</span>
                   )}
                 </label>
                 <input type="number" inputMode="decimal" placeholder="0.00" value={unitPrice}
-                  onChange={e => setUnitPrice(e.target.value)} required
+                  onChange={e => setUnitPrice(e.target.value)}
                   className="w-full text-3xl font-bold text-gray-800 border-none outline-none bg-transparent" />
               </div>
+
+              {/* ยอดรวม */}
               {total > 0 && (
-                <div className="border-t border-gray-100 pt-3 flex justify-between items-center">
-                  <span className="text-sm text-gray-500">ยอดรวม</span>
-                  <span className="text-2xl font-bold text-purple-700">
-                    ฿{total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
-                  </span>
+                <div className="border-t border-gray-100 pt-3">
+                  <div className="bg-purple-50 rounded-xl p-3 flex justify-between items-center">
+                    <div>
+                      <p className="text-xs text-gray-400">{qtyNum} ชิ้น × ฿{priceNum.toLocaleString()}</p>
+                      <p className="text-sm text-gray-500 font-medium">ยอดรวม</p>
+                    </div>
+                    <span className="text-2xl font-bold text-purple-700">
+                      ฿{total.toLocaleString('th-TH', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
