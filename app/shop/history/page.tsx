@@ -5,6 +5,7 @@ import { Purchase } from '@/lib/types'
 
 const CATEGORY_ICON: Record<string, string> = {
   'วัตถุดิบ ร้าน Hop & Sip': '🧂',
+  'อุปกรณ์ร้าน Hop & Sip': '🛠️',
   'อุปกรณ์ เครื่องใช้': '🔧',
   'อาหาร/เครื่องดื่ม': '🍽️',
   'ค่าสัตว์เลี้ยง': '🐾',
@@ -12,7 +13,7 @@ const CATEGORY_ICON: Record<string, string> = {
 }
 function catIcon(c: string) { return CATEGORY_ICON[c] ?? '📦' }
 
-type FilterCat = 'ทั้งหมด' | 'วัตถุดิบ ร้าน Hop & Sip' | 'อุปกรณ์ เครื่องใช้' | 'อาหาร/เครื่องดื่ม' | 'ค่าสัตว์เลี้ยง' | 'อื่นๆ (รายจ่าย)'
+type FilterCat = 'ทั้งหมด' | 'วัตถุดิบ ร้าน Hop & Sip' | 'อุปกรณ์ร้าน Hop & Sip' | 'อุปกรณ์ เครื่องใช้' | 'อาหาร/เครื่องดื่ม' | 'ค่าสัตว์เลี้ยง' | 'อื่นๆ (รายจ่าย)'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -41,7 +42,7 @@ export default function ShopHistoryPage() {
     if (!confirm(`ลบ "${p.productName}" ฿${fmt(p.total)} ใช่ไหม?`)) return
     setDeleting(p.id)
     try {
-      await fetch('/api/purchases/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rowIndex: parseInt(p.id) }) })
+      await fetch('/api/purchases/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
       await fetchData()
     } finally { setDeleting(null) }
   }
@@ -80,7 +81,7 @@ export default function ShopHistoryPage() {
       <div className="px-4 py-3 space-y-3">
         {/* Filter */}
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          {(['ทั้งหมด', 'วัตถุดิบ ร้าน Hop & Sip', 'อุปกรณ์ เครื่องใช้', 'อาหาร/เครื่องดื่ม', 'ค่าสัตว์เลี้ยง', 'อื่นๆ (รายจ่าย)'] as FilterCat[]).map(c => (
+          {(['ทั้งหมด', 'วัตถุดิบ ร้าน Hop & Sip', 'อุปกรณ์ร้าน Hop & Sip', 'อุปกรณ์ เครื่องใช้', 'อาหาร/เครื่องดื่ม', 'ค่าสัตว์เลี้ยง', 'อื่นๆ (รายจ่าย)'] as FilterCat[]).map(c => (
             <button key={c} onClick={() => setFilterCat(c)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
                 filterCat === c ? 'bg-purple-200 text-purple-800' : 'bg-white text-gray-500 border border-gray-200'
@@ -104,7 +105,7 @@ export default function ShopHistoryPage() {
                       <span className="text-lg mr-3 flex-shrink-0">{catIcon(p.category)}</span>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-800 text-sm truncate">{p.productName}</p>
-                        <p className="text-gray-400 text-xs">{p.qty.toLocaleString()} {p.unit} × ฿{p.unitPrice.toLocaleString()}{p.store ? ` · ${p.store}` : ''}{p.note ? ` · ${p.note}` : ''}</p>
+                        <p className="text-gray-400 text-xs">{p.qty.toLocaleString()} {p.unit} × ฿{fmt(p.unitPrice)}{p.store ? ` · ${p.store}` : ''}{p.note ? ` · ${p.note}` : ''}</p>
                       </div>
                       <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0">฿{fmt(p.total)}</p>
                       <button onClick={() => handleDelete(p)} disabled={deleting === p.id}

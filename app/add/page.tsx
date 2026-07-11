@@ -11,7 +11,7 @@ export default function AddPage() {
   const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
   const [category, setCategory] = useState<Category>(INCOME_CATEGORIES[0])
   const [amount, setAmount] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('เงินสด')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('KBank')
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
@@ -103,7 +103,7 @@ export default function AddPage() {
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <label className="block text-sm text-gray-500 mb-2">ช่องทาง</label>
           <div className="flex gap-2">
-            {(['เงินสด', 'KBank'] as PaymentMethod[]).map((m) => (
+            {(['KBank', 'เงินสด'] as PaymentMethod[]).map((m) => (
               <button
                 key={m}
                 type="button"
@@ -123,13 +123,13 @@ export default function AddPage() {
         {/* Category */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <label className="block text-sm text-gray-500 mb-2">หมวดหมู่</label>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-wrap gap-2">
             {categories.map((cat) => (
               <button
                 key={cat}
                 type="button"
                 onClick={() => setCategory(cat)}
-                className={`py-2.5 px-3 rounded-xl text-sm font-medium text-left transition-all border ${
+                className={`py-2 px-3 rounded-xl text-sm font-medium transition-all border ${
                   category === cat
                     ? isIncome
                       ? 'bg-green-50 border-green-500 text-green-800'
@@ -145,14 +145,28 @@ export default function AddPage() {
 
         {/* Date */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
-          <label className="block text-sm text-gray-500 mb-1">วันที่</label>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
-            required
-            className="w-full text-base text-gray-800 border-none outline-none bg-transparent"
-          />
+          <label className="block text-sm text-gray-500 mb-2">วันที่</label>
+          <div className="flex items-center gap-2 mb-2">
+            <button type="button"
+              onClick={() => { const d = new Date(date); d.setDate(d.getDate() - 1); setDate(d.toISOString().slice(0,10)) }}
+              className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-lg flex-shrink-0 active:bg-gray-200">‹</button>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required
+              onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
+              className="flex-1 text-base text-gray-800 border border-gray-200 rounded-xl px-3 py-1.5 outline-none focus:border-rose-300 cursor-pointer" />
+            <button type="button"
+              onClick={() => { const d = new Date(date); d.setDate(d.getDate() + 1); setDate(d.toISOString().slice(0,10)) }}
+              className="w-9 h-9 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-lg flex-shrink-0 active:bg-gray-200">›</button>
+          </div>
+          <div className="flex gap-2">
+            {[['วันนี้', 0], ['เมื่อวาน', -1], ['2 วันก่อน', -2]].map(([label, diff]) => (
+              <button key={label} type="button"
+                onClick={() => { const d = new Date(); d.setDate(d.getDate() + Number(diff)); setDate(d.toISOString().slice(0,10)) }}
+                className={`px-3 py-1 rounded-lg text-xs border transition-all ${
+                  date === (() => { const d = new Date(); d.setDate(d.getDate() + Number(diff)); return d.toISOString().slice(0,10) })()
+                    ? 'bg-rose-100 border-rose-300 text-rose-700 font-semibold' : 'border-gray-200 text-gray-500'
+                }`}>{label}</button>
+            ))}
+          </div>
         </div>
 
         {/* Note */}

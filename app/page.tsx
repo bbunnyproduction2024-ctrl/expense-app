@@ -7,7 +7,7 @@ import { th } from 'date-fns/locale'
 import Link from 'next/link'
 
 function formatBaht(amount: number) {
-  return amount.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
+  return amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 export default function DashboardPage() {
@@ -46,8 +46,16 @@ export default function DashboardPage() {
 
   const balance = totalIncome - totalExpense
 
+  const kbankBalance = monthTxns
+    .filter((t) => t.paymentMethod === 'KBank')
+    .reduce((s, t) => s + (t.type === 'รายรับ' ? t.amount : -t.amount), 0)
+
+  const cashBalance = monthTxns
+    .filter((t) => t.paymentMethod === 'เงินสด')
+    .reduce((s, t) => s + (t.type === 'รายรับ' ? t.amount : -t.amount), 0)
+
   const recent = [...monthTxns]
-    .sort((a, b) => b.timestamp.localeCompare(a.timestamp))
+    .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
     .slice(0, 5)
 
   const categoryMap = new Map<string, { amount: number; type: string }>()
@@ -84,7 +92,7 @@ export default function DashboardPage() {
           <p className="text-3xl font-bold mb-3 text-gray-800">
             {balance >= 0 ? '+' : ''}฿{formatBaht(balance)}
           </p>
-          <div className="flex gap-3">
+          <div className="flex gap-3 mb-3">
             <div className="flex-1 bg-green-500/20 rounded-xl p-3">
               <p className="text-green-700 text-xs mb-0.5">รายรับ</p>
               <p className="text-green-700 font-bold text-lg">฿{formatBaht(totalIncome)}</p>
@@ -92,6 +100,20 @@ export default function DashboardPage() {
             <div className="flex-1 bg-red-500/20 rounded-xl p-3">
               <p className="text-red-700 text-xs mb-0.5">รายจ่าย</p>
               <p className="text-red-700 font-bold text-lg">฿{formatBaht(totalExpense)}</p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex-1 bg-sky-500/10 rounded-xl p-3">
+              <p className="text-sky-600 text-xs mb-0.5">🏦 KBank คงเหลือ</p>
+              <p className={`font-bold text-base ${kbankBalance >= 0 ? 'text-sky-700' : 'text-red-500'}`}>
+                {kbankBalance >= 0 ? '+' : ''}฿{formatBaht(kbankBalance)}
+              </p>
+            </div>
+            <div className="flex-1 bg-amber-500/10 rounded-xl p-3">
+              <p className="text-amber-600 text-xs mb-0.5">💵 เงินสด คงเหลือ</p>
+              <p className={`font-bold text-base ${cashBalance >= 0 ? 'text-amber-700' : 'text-red-500'}`}>
+                {cashBalance >= 0 ? '+' : ''}฿{formatBaht(cashBalance)}
+              </p>
             </div>
           </div>
         </div>

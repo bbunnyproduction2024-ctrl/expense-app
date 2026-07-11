@@ -8,6 +8,7 @@ import Link from 'next/link'
 
 const CATEGORY_ICON: Record<string, string> = {
   'วัตถุดิบ ร้าน Hop & Sip': '🧂',
+  'อุปกรณ์ร้าน Hop & Sip': '🛠️',
   'อุปกรณ์ เครื่องใช้': '🔧',
   'อาหาร/เครื่องดื่ม': '🍽️',
   'ค่าสัตว์เลี้ยง': '🐾',
@@ -40,7 +41,9 @@ export default function ShopDashboard() {
 
   const totalAll = filtered.reduce((s, p) => s + p.total, 0)
   const totalIngredient = filtered.filter(p => p.category === 'วัตถุดิบ ร้าน Hop & Sip').reduce((s, p) => s + p.total, 0)
-  const totalEquipment = filtered.filter(p => p.category === 'อุปกรณ์ เครื่องใช้').reduce((s, p) => s + p.total, 0)
+  const totalShopEquip = filtered.filter(p => p.category === 'อุปกรณ์ร้าน Hop & Sip').reduce((s, p) => s + p.total, 0)
+  const FAMILY_CATS = ['อุปกรณ์ เครื่องใช้', 'อาหาร/เครื่องดื่ม', 'ค่าสัตว์เลี้ยง', 'อื่นๆ (รายจ่าย)']
+  const totalEquipment = filtered.filter(p => FAMILY_CATS.includes(p.category)).reduce((s, p) => s + p.total, 0)
 
   // Top items this month
   const itemMap = new Map<string, { total: number; qty: number; unit: string; category: string }>()
@@ -71,22 +74,33 @@ export default function ShopDashboard() {
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <p className="text-gray-400 text-sm mb-1">{thaiMonth} — รวมทั้งหมด</p>
           <p className="text-3xl font-bold text-gray-800 mb-3">฿{fmt(totalAll)}</p>
-          <div className="flex gap-3">
-            <div className="flex-1 bg-orange-50 rounded-xl p-3">
-              <p className="text-orange-500 text-xs mb-0.5">🧂 วัตถุดิบ Hop & Sip</p>
-              <p className="text-orange-600 font-bold">฿{fmt(totalIngredient)}</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-orange-50 rounded-xl p-3">
+              <p className="text-orange-500 text-xs mb-0.5">🧂 วัตถุดิบร้าน</p>
+              <p className="text-orange-600 font-bold text-sm">฿{fmt(totalIngredient)}</p>
             </div>
-            <div className="flex-1 bg-purple-50 rounded-xl p-3">
-              <p className="text-purple-500 text-xs mb-0.5">🔧 อุปกรณ์ เครื่องใช้</p>
-              <p className="text-purple-600 font-bold">฿{fmt(totalEquipment)}</p>
+            <div className="bg-sky-50 rounded-xl p-3">
+              <p className="text-sky-500 text-xs mb-0.5">🛠️ อุปกรณ์ร้าน</p>
+              <p className="text-sky-600 font-bold text-sm">฿{fmt(totalShopEquip)}</p>
+            </div>
+            <div className="bg-purple-50 rounded-xl p-3">
+              <p className="text-purple-500 text-xs mb-0.5">🔧 ครอบครัว</p>
+              <p className="text-purple-600 font-bold text-sm">฿{fmt(totalEquipment)}</p>
             </div>
           </div>
         </div>
 
-        <Link href="/shop/add"
-          className="flex items-center justify-center gap-2 bg-sky-100 text-sky-700 border border-sky-200 rounded-2xl py-3.5 font-semibold text-base shadow-sm active:opacity-90">
-          <span className="text-xl leading-none">+</span> บันทึกการซื้อ
-        </Link>
+        <div className="flex gap-3">
+          <Link href="/shop/add"
+            style={{background: '#96CFCF'}}
+            className="flex-1 flex items-center justify-center gap-2 text-gray-800 rounded-2xl py-3.5 font-semibold text-base shadow-sm active:opacity-90">
+            <span className="text-xl leading-none">+</span> บันทึกการซื้อ
+          </Link>
+          <Link href="/shop/products"
+            className="flex items-center justify-center gap-1.5 bg-white text-teal-600 border border-teal-200 rounded-2xl px-4 py-3.5 font-semibold text-sm shadow-sm active:opacity-90 flex-shrink-0">
+            🔍 ราคาสินค้า
+          </Link>
+        </div>
 
         {loading ? <div className="text-center py-8 text-gray-400">กำลังโหลด...</div> : (
           <>

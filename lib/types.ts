@@ -1,21 +1,25 @@
 export type TransactionType = 'รายรับ' | 'รายจ่าย'
-export type PaymentMethod = 'เงินสด' | 'KBank'
+export type PaymentMethod = 'KBank' | 'เงินสด' | 'ออมทรัพย์'
 
 export const INCOME_CATEGORIES = [
   'ร้าน Hop & Sip',
   'ห้องพัก/Guesthouse',
   'Mom_Jay',
+  'Entertainment',
   'อื่นๆ (รายรับ)',
 ] as const
 
 export const EXPENSE_CATEGORIES = [
   'ค่าพนักงาน/เงินเดือน',
   'วัตถุดิบร้าน Hop & Sip',
+  'อุปกรณ์ร้าน Hop & Sip',
   'อาหาร/เครื่องดื่ม',
   'ค่าสัตว์เลี้ยง',
   'ค่าน้ำมันรถ',
   'ค่าใช้จ่ายในครอบครัว',
   'ค่าสาธารณูปโภค',
+  'Entertainment',
+  'ออมเงิน',
   'อื่นๆ (รายจ่าย)',
 ] as const
 
@@ -51,7 +55,7 @@ export interface MonthlySummary {
 }
 
 // ---- Purchase tracker ----
-export type ItemCategory = 'วัตถุดิบ ร้าน Hop & Sip' | 'อุปกรณ์ เครื่องใช้' | 'อาหาร/เครื่องดื่ม' | 'ค่าสัตว์เลี้ยง' | 'อื่นๆ (รายจ่าย)'
+export type ItemCategory = 'วัตถุดิบ ร้าน Hop & Sip' | 'อุปกรณ์ร้าน Hop & Sip' | 'อุปกรณ์ เครื่องใช้' | 'อาหาร/เครื่องดื่ม' | 'ค่าสัตว์เลี้ยง' | 'อื่นๆ (รายจ่าย)'
 export type ItemUnit = string  // e.g. "5000g", "500ml", "30ชิ้น/อัน"
 
 export interface Product {
