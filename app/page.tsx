@@ -10,6 +10,10 @@ function formatBaht(amount: number) {
   return amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// เริ่มยกยอดสะสมตั้งแต่เดือนนี้เป็นต้นไป (yyyy-MM)
+// รายการก่อนหน้านี้ (มิ.ย./ก.ค. 2026) ยกยอดด้วยมือแล้ว จึงไม่นำมารวม
+const CARRY_OVER_START = '2026-08'
+
 export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
@@ -36,10 +40,13 @@ export default function DashboardPage() {
     }
   })
 
-  // รายการของทุกเดือนก่อนหน้าเดือนที่เลือก — ใช้คำนวณยอดยกมา
+  // รายการตั้งแต่ CARRY_OVER_START จนถึงก่อนเดือนที่เลือก — ใช้คำนวณยอดยกมา
   const priorTxns = transactions.filter((t) => {
     try {
-      return isBefore(parseISO(t.date), monthStart)
+      return (
+        t.date.slice(0, 7) >= CARRY_OVER_START &&
+        isBefore(parseISO(t.date), monthStart)
+      )
     } catch {
       return false
     }
@@ -112,9 +119,13 @@ export default function DashboardPage() {
           <p className="text-3xl font-bold mb-1 text-gray-800">
             {balance >= 0 ? '+' : ''}฿{formatBaht(balance)}
           </p>
-          <p className="text-xs text-gray-500 mb-3">
-            ยอดยกมาจากเดือนก่อน: {carryOver >= 0 ? '+' : ''}฿{formatBaht(carryOver)}
-          </p>
+          {priorTxns.length > 0 ? (
+            <p className="text-xs text-gray-500 mb-3">
+              ยอดยกมาจากเดือนก่อน: {carryOver >= 0 ? '+' : ''}฿{formatBaht(carryOver)}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-400 mb-3">เริ่มนับยอดสะสมเดือนนี้</p>
+          )}
           <div className="flex gap-3 mb-3">
             <div className="flex-1 bg-green-500/20 rounded-xl p-3">
               <p className="text-green-700 text-xs mb-0.5">รายรับ</p>
