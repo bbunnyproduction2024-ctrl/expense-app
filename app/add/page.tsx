@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { TransactionType, PaymentMethod, INCOME_CATEGORIES, EXPENSE_CATEGORIES, Category } from '@/lib/types'
+import { TransactionType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES, Category } from '@/lib/types'
 import { format } from 'date-fns'
 
 export default function AddPage() {
@@ -52,7 +52,7 @@ export default function AddPage() {
   const isIncome = type === 'รายรับ'
 
   return (
-    <div className="min-h-full bg-[#f7ede4]">
+    <div className="min-h-full bg-[#f7ede4] overflow-x-hidden">
       {/* Header */}
       <div className={`px-4 pt-12 pb-6 ${isIncome ? 'bg-green-700' : 'bg-red-700'} text-white`}>
         <h1 className="text-2xl font-bold">เพิ่มรายการ</h1>
@@ -102,19 +102,19 @@ export default function AddPage() {
         {/* Payment Method */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
           <label className="block text-sm text-gray-500 mb-2">ช่องทาง</label>
-          <div className="flex gap-2">
-            {(['KBank', 'เงินสด'] as PaymentMethod[]).map((m) => (
+          <div className="flex gap-1.5">
+            {PAYMENT_METHODS.map((m) => (
               <button
                 key={m}
                 type="button"
                 onClick={() => setPaymentMethod(m)}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
+                className={`flex-1 min-w-0 px-1 py-2.5 rounded-xl text-xs font-semibold border transition-all tracking-tight ${
                   paymentMethod === m
                     ? 'bg-sky-100 border-sky-400 text-sky-700'
                     : 'border-gray-200 text-gray-500'
                 }`}
               >
-                {m === 'เงินสด' ? '💵 เงินสด' : '🏦 KBank'}
+                {PAYMENT_METHOD_LABELS[m]}
               </button>
             ))}
           </div>

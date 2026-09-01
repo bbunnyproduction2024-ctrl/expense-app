@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, TransactionType, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/types'
+import { Transaction, TransactionType, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/types'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -173,7 +173,7 @@ export default function HistoryPage() {
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-800 text-sm truncate">{t.category}</p>
                           <p className="text-gray-400 text-xs truncate">
-                            {t.paymentMethod === 'KBank' ? '🏦 KBank' : '💵 เงินสด'}
+                            {PAYMENT_METHOD_LABELS[t.paymentMethod] ?? t.paymentMethod}
                             {t.note ? ` · ${t.note}` : ''}
                           </p>
                         </div>
@@ -221,12 +221,12 @@ export default function HistoryPage() {
                           <div>
                             <span className="text-xs text-blue-500 block mb-1">ช่องทางชำระ</span>
                             <div className="flex gap-2">
-                              {(['KBank', 'เงินสด'] as const).map(m => (
+                              {PAYMENT_METHODS.map(m => (
                                 <button key={m} type="button" onClick={() => setEditPayment(m)}
                                   className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                                     editPayment === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'bg-white border-gray-200 text-gray-500'
                                   }`}>
-                                  {m === 'KBank' ? '🏦 KBank' : '💵 เงินสด'}
+                                  {PAYMENT_METHOD_LABELS[m]}
                                 </button>
                               ))}
                             </div>

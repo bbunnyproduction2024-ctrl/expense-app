@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Product, ItemCategory, PaymentMethod, PurchaseInput } from '@/lib/types'
+import { Product, ItemCategory, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, PurchaseInput } from '@/lib/types'
 import { format } from 'date-fns'
 
 const UNIT_TYPES = [
@@ -187,12 +187,12 @@ export default function ShopAddPage() {
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <label className="block text-sm text-gray-500 mb-2">ช่องทางชำระเงิน</label>
               <div className="flex gap-2">
-                {(['KBank', 'เงินสด'] as PaymentMethod[]).map(m => (
+                {PAYMENT_METHODS.map(m => (
                   <button key={m} type="button" onClick={() => setPaymentMethod(m)}
                     className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
                       paymentMethod === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'border-gray-200 text-gray-500'
                     }`}>
-                    {m === 'เงินสด' ? '💵 เงินสด' : '🏦 KBank'}
+                    {PAYMENT_METHOD_LABELS[m]}
                   </button>
                 ))}
               </div>
@@ -269,12 +269,12 @@ export default function ShopAddPage() {
             <div className="bg-white rounded-2xl p-4 shadow-sm">
               <label className="block text-sm text-gray-500 mb-2">ช่องทางชำระเงิน</label>
               <div className="flex gap-2">
-                {(['KBank', 'เงินสด'] as PaymentMethod[]).map(m => (
+                {PAYMENT_METHODS.map(m => (
                   <button key={m} type="button" onClick={() => setPaymentMethod(m)}
                     className={`flex-1 py-2.5 rounded-xl text-sm font-semibold border transition-all ${
                       paymentMethod === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'border-gray-200 text-gray-500'
                     }`}>
-                    {m === 'เงินสด' ? '💵 เงินสด' : '🏦 KBank'}
+                    {PAYMENT_METHOD_LABELS[m]}
                   </button>
                 ))}
               </div>

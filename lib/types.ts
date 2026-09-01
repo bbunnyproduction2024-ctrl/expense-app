@@ -1,6 +1,14 @@
 export type TransactionType = 'รายรับ' | 'รายจ่าย'
 export type PaymentMethod = 'KBank' | 'เงินสด' | 'ออมทรัพย์'
 
+export const PAYMENT_METHODS: PaymentMethod[] = ['KBank', 'เงินสด', 'ออมทรัพย์']
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  KBank: '🏦 KBank',
+  เงินสด: '💵 เงินสด',
+  ออมทรัพย์: '🐷 ออมทรัพย์',
+}
+
 export const INCOME_CATEGORIES = [
   'ร้าน Hop & Sip',
   'ห้องพัก/Guesthouse',
