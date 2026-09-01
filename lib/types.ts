@@ -31,9 +31,28 @@ export const EXPENSE_CATEGORIES = [
   'อื่นๆ (รายจ่าย)',
 ] as const
 
+// หมวดพิเศษสำหรับการโอนเงินระหว่างบัญชี — ไม่นับเป็นรายรับ/รายจ่ายจริง
+export const TRANSFER_CATEGORY = 'โอนเงิน' as const
+
 export type IncomeCategory = typeof INCOME_CATEGORIES[number]
 export type ExpenseCategory = typeof EXPENSE_CATEGORIES[number]
-export type Category = IncomeCategory | ExpenseCategory
+export type Category = IncomeCategory | ExpenseCategory | typeof TRANSFER_CATEGORY
+
+// วงล้อที่ 1 = เฉพาะร้าน Hop & Sip / วงล้อที่ 2 = อื่นๆ ที่เหลือ
+export const SHOP_INCOME_CATEGORIES: string[] = ['ร้าน Hop & Sip']
+export const SHOP_EXPENSE_CATEGORIES: string[] = ['วัตถุดิบร้าน Hop & Sip', 'อุปกรณ์ร้าน Hop & Sip']
+
+export function isShopCategory(cat: string): boolean {
+  return SHOP_INCOME_CATEGORIES.includes(cat) || SHOP_EXPENSE_CATEGORIES.includes(cat)
+}
+
+export interface TransferInput {
+  date: string
+  from: PaymentMethod
+  to: PaymentMethod
+  amount: number
+  note: string
+}
 
 export interface Transaction {
   id: string

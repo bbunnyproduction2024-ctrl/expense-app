@@ -1,5 +1,5 @@
 import { google } from 'googleapis'
-import { Transaction, TransactionInput, Product, ProductInput, Purchase, PurchaseInput } from './types'
+import { Transaction, TransactionInput, TransferInput, Product, ProductInput, Purchase, PurchaseInput } from './types'
 
 const SHEET_NAME = 'Transactions'
 const PRODUCTS_SHEET = 'Products'
@@ -120,6 +120,76 @@ export async function updateTransaction(rowIndex: number, fields: { date?: strin
       requestBody: { values: [[fields.paymentMethod]] },
     })
   }
+}
+
+// ---- Transfers (โอนเงินระหว่างบัญชี) ----
+// เก็บเป็น 2 แถวใน Transactions: ขาออก (รายจ่าย) + ขาเข้า (รายรับ) หมวด "โอนเงิน"
+// ผูกคู่กันด้วย token [T<epoch>] ที่ท้าย Note
+export async function addTransfer(input: TransferInput): Promise<void> {
+  const token = `T${Date.now()}`
+  const memo = (input.note ?? '').trim()
+  const suffix = `${memo ? ` · ${memo}` : ''} [${token}]`
+  await addTransaction({
+    date: input.date,
+    type: 'รายจ่าย',
+    category: 'โอนเงิน' as TransactionInput['category'],
+    amount: input.amount,
+    paymentMethod: input.from,
+    note: `โอนไป ${input.to}${suffix}`,
+  })
+  await addTransaction({
+    date: input.date,
+    type: 'รายรับ',
+    category: 'โอนเงิน' as TransactionInput['category'],
+    amount: input.amount,
+    paymentMethod: input.to,
+    note: `โอนจาก ${input.from}${suffix}`,
+  })
+}
+
+// ลบทั้งคู่ของการโอน โดยดู token จากแถวที่เลือก
+export async function deleteTransferByRow(rowIndex: number): Promise<void> {
+  const sheets = getSheets()
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A2:H`,
+  })
+  const rows = res.data.values ?? []
+  const target = rows[rowIndex - 2]
+  const note: string = target?.[6] ?? ''
+  const m = note.match(/\[T\d+\]/)
+  const indices: number[] = []
+  if (m) {
+    const tok = m[0]
+    for (let i = 0; i < rows.length; i++) {
+      if ((rows[i][6] ?? '').includes(tok)) indices.push(i + 2)
+    }
+  } else {
+    indices.push(rowIndex)
+  }
+  if (indices.length === 0) return
+
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+  const sheet = meta.data.sheets?.find((s) => s.properties?.title === SHEET_NAME)
+  if (!sheet?.properties?.sheetId) throw new Error('Sheet not found')
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: indices
+        .sort((a, b) => b - a)
+        .map((r) => ({
+          deleteDimension: {
+            range: {
+              sheetId: sheet.properties!.sheetId!,
+              dimension: 'ROWS',
+              startIndex: r - 1,
+              endIndex: r,
+            },
+          },
+        })),
+    },
+  })
 }
 
 export async function deleteTransaction(rowIndex: number): Promise<void> {

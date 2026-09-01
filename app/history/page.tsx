@@ -1,12 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, TransactionType, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/types'
+import { Transaction, TransactionType, TRANSFER_CATEGORY, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/types'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 
 function formatBaht(amount: number) {
   return amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// ตัด token [T123...] ที่ผูกคู่การโอนออกจากหมายเหตุ ก่อนแสดงผล
+function cleanNote(note: string) {
+  return note.replace(/\s*\[T\d+\]\s*/g, '').trim()
 }
 
 export default function HistoryPage() {
@@ -61,10 +66,12 @@ export default function HistoryPage() {
   }
 
   async function handleDelete(t: Transaction) {
-    if (!confirm(`ลบรายการ "${t.category}" ฿${formatBaht(t.amount)} ใช่ไหม?`)) return
+    const isTransfer = t.category === TRANSFER_CATEGORY
+    const label = isTransfer ? 'การโอนเงินนี้ (ทั้งขาออกและขาเข้า)' : `รายการ "${t.category}" ฿${formatBaht(t.amount)}`
+    if (!confirm(`ลบ${label} ใช่ไหม?`)) return
     setDeleting(t.id)
     try {
-      await fetch('/api/transactions/delete', {
+      await fetch(isTransfer ? '/api/transfers/delete' : '/api/transactions/delete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rowIndex: parseInt(t.id) }),
@@ -91,8 +98,10 @@ export default function HistoryPage() {
 
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a))
 
-  const totalIncome = filtered.filter((t) => t.type === 'รายรับ').reduce((s, t) => s + t.amount, 0)
-  const totalExpense = filtered.filter((t) => t.type === 'รายจ่าย').reduce((s, t) => s + t.amount, 0)
+  // การโอนเงินระหว่างบัญชีไม่นับเป็นรายรับ/รายจ่าย
+  const real = filtered.filter((t) => t.category !== TRANSFER_CATEGORY)
+  const totalIncome = real.filter((t) => t.type === 'รายรับ').reduce((s, t) => s + t.amount, 0)
+  const totalExpense = real.filter((t) => t.type === 'รายจ่าย').reduce((s, t) => s + t.amount, 0)
 
   return (
     <div className="min-h-full bg-[#f7ede4]">
@@ -149,7 +158,9 @@ export default function HistoryPage() {
               displayDate = format(parseISO(date), 'EEEE d MMMM yyyy', { locale: th })
             } catch { /* use raw date */ }
 
-            const dayNet = grouped[date].reduce((s, t) => s + (t.type === 'รายรับ' ? t.amount : -t.amount), 0)
+            const dayNet = grouped[date]
+              .filter((t) => t.category !== TRANSFER_CATEGORY)
+              .reduce((s, t) => s + (t.type === 'รายรับ' ? t.amount : -t.amount), 0)
 
             return (
               <div key={date}>
@@ -160,31 +171,39 @@ export default function HistoryPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
-                  {grouped[date].map((t) => (
+                  {grouped[date].map((t) => {
+                    const isTransfer = t.category === TRANSFER_CATEGORY
+                    return (
                     <div key={t.id}>
                       <div className="flex items-center px-4 py-3">
                         <div
                           className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 ${
-                            t.type === 'รายรับ' ? 'bg-green-100' : 'bg-red-100'
+                            isTransfer ? 'bg-indigo-100' : t.type === 'รายรับ' ? 'bg-green-100' : 'bg-red-100'
                           }`}
                         >
-                          {t.type === 'รายรับ' ? '💰' : '💸'}
+                          {isTransfer ? '🔄' : t.type === 'รายรับ' ? '💰' : '💸'}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-800 text-sm truncate">{t.category}</p>
+                          <p className="font-medium text-gray-800 text-sm truncate">
+                            {isTransfer ? cleanNote(t.note) || 'โอนเงิน' : t.category}
+                          </p>
                           <p className="text-gray-400 text-xs truncate">
                             {PAYMENT_METHOD_LABELS[t.paymentMethod] ?? t.paymentMethod}
-                            {t.note ? ` · ${t.note}` : ''}
+                            {!isTransfer && t.note ? ` · ${t.note}` : ''}
                           </p>
                         </div>
-                        <p className={`font-semibold text-sm mr-2 flex-shrink-0 ${t.type === 'รายรับ' ? 'text-green-600' : 'text-red-500'}`}>
-                          {t.type === 'รายรับ' ? '+' : '-'}฿{formatBaht(t.amount)}
+                        <p className={`font-semibold text-sm mr-2 flex-shrink-0 ${
+                          isTransfer ? 'text-gray-400' : t.type === 'รายรับ' ? 'text-green-600' : 'text-red-500'
+                        }`}>
+                          {isTransfer ? '⇄ ' : t.type === 'รายรับ' ? '+' : '-'}฿{formatBaht(t.amount)}
                         </p>
-                        <button
-                          onClick={() => { setEditingId(t.id); setEditDate(t.date); setEditAmount(String(t.amount)); setEditCategory(t.category); setEditNote(t.note ?? ''); setEditPayment(t.paymentMethod) }}
-                          className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0"
-                          aria-label="แก้ไขวันที่"
-                        >✏️</button>
+                        {!isTransfer && (
+                          <button
+                            onClick={() => { setEditingId(t.id); setEditDate(t.date); setEditAmount(String(t.amount)); setEditCategory(t.category); setEditNote(t.note ?? ''); setEditPayment(t.paymentMethod) }}
+                            className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0"
+                            aria-label="แก้ไขวันที่"
+                          >✏️</button>
+                        )}
                         <button
                           onClick={() => handleDelete(t)}
                           disabled={deleting === t.id}
@@ -267,7 +286,8 @@ export default function HistoryPage() {
                         </div>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )

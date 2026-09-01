@@ -1,10 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction } from '@/lib/types'
+import { Transaction, TRANSFER_CATEGORY, isShopCategory } from '@/lib/types'
 import { format, startOfMonth, endOfMonth, isWithinInterval, isBefore, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import Link from 'next/link'
+import WheelSummary, { WheelSlice } from '@/components/WheelSummary'
+
+function groupByCategory(txns: Transaction[]): WheelSlice[] {
+  const m = new Map<string, number>()
+  txns.forEach((t) => m.set(t.category, (m.get(t.category) ?? 0) + t.amount))
+  return [...m.entries()].map(([label, amount]) => ({ label, amount }))
+}
 
 function formatBaht(amount: number) {
   return amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -61,11 +68,14 @@ export default function DashboardPage() {
   const carryCash = net(priorTxns.filter((t) => t.paymentMethod === 'เงินสด'))
   const carrySaving = net(priorTxns.filter((t) => t.paymentMethod === 'ออมทรัพย์'))
 
-  const totalIncome = monthTxns
+  // รายการจริง (ไม่รวมการโอนเงินระหว่างบัญชี) ใช้คิดรายรับ/รายจ่าย/หมวด/วงล้อ
+  const realMonthTxns = monthTxns.filter((t) => t.category !== TRANSFER_CATEGORY)
+
+  const totalIncome = realMonthTxns
     .filter((t) => t.type === 'รายรับ')
     .reduce((s, t) => s + t.amount, 0)
 
-  const totalExpense = monthTxns
+  const totalExpense = realMonthTxns
     .filter((t) => t.type === 'รายจ่าย')
     .reduce((s, t) => s + t.amount, 0)
 
@@ -81,18 +91,29 @@ export default function DashboardPage() {
   const savingBalance =
     carrySaving + net(monthTxns.filter((t) => t.paymentMethod === 'ออมทรัพย์'))
 
-  const recent = [...monthTxns]
+  const recent = [...realMonthTxns]
     .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
     .slice(0, 5)
 
   const categoryMap = new Map<string, { amount: number; type: string }>()
-  monthTxns.forEach((t) => {
+  realMonthTxns.forEach((t) => {
     const existing = categoryMap.get(t.category)
     categoryMap.set(t.category, {
       amount: (existing?.amount ?? 0) + t.amount,
       type: t.type,
     })
   })
+
+  // ---- วงล้อสรุป ----
+  const shopIncomeTxns = realMonthTxns.filter((t) => t.type === 'รายรับ' && isShopCategory(t.category))
+  const shopExpenseTxns = realMonthTxns.filter((t) => t.type === 'รายจ่าย' && isShopCategory(t.category))
+  const otherIncomeTxns = realMonthTxns.filter((t) => t.type === 'รายรับ' && !isShopCategory(t.category))
+  const otherExpenseTxns = realMonthTxns.filter((t) => t.type === 'รายจ่าย' && !isShopCategory(t.category))
+
+  const shopIncome = shopIncomeTxns.reduce((s, t) => s + t.amount, 0)
+  const shopExpense = shopExpenseTxns.reduce((s, t) => s + t.amount, 0)
+  const otherIncome = otherIncomeTxns.reduce((s, t) => s + t.amount, 0)
+  const otherExpense = otherExpenseTxns.reduce((s, t) => s + t.amount, 0)
 
   const thaiMonth = format(parseISO(`${selectedMonth}-01`), 'MMMM yyyy', { locale: th })
 
@@ -161,19 +182,47 @@ export default function DashboardPage() {
       </div>
 
       <div className="px-4 py-4 space-y-4">
-        {/* Quick add button */}
-        <Link
-          href="/add"
-          className="flex items-center justify-center gap-2 bg-sky-100 text-sky-700 border border-sky-200 rounded-2xl py-3.5 font-semibold text-base shadow-sm active:opacity-90"
-        >
-          <span className="text-xl leading-none">+</span>
-          เพิ่มรายการใหม่
-        </Link>
+        {/* Quick actions */}
+        <div className="flex gap-3">
+          <Link
+            href="/add"
+            className="flex-1 flex items-center justify-center gap-2 bg-sky-100 text-sky-700 border border-sky-200 rounded-2xl py-3.5 font-semibold text-base shadow-sm active:opacity-90"
+          >
+            <span className="text-xl leading-none">+</span>
+            เพิ่มรายการ
+          </Link>
+          <Link
+            href="/transfer"
+            className="flex items-center justify-center gap-1.5 bg-white text-indigo-600 border border-indigo-200 rounded-2xl px-4 py-3.5 font-semibold text-sm shadow-sm active:opacity-90 flex-shrink-0"
+          >
+            🔄 โอนเงิน
+          </Link>
+        </div>
 
         {loading ? (
           <div className="text-center py-8 text-gray-400">กำลังโหลด...</div>
         ) : (
           <>
+            {/* วงล้อสรุป */}
+            <WheelSummary
+              title="วงล้อ 1 · ร้าน Hop & Sip"
+              subtitle={thaiMonth}
+              income={shopIncome}
+              expense={shopExpense}
+              incomeSlices={groupByCategory(shopIncomeTxns)}
+              expenseSlices={groupByCategory(shopExpenseTxns)}
+              centerCaption="กำไรร้าน"
+            />
+            <WheelSummary
+              title="วงล้อ 2 · อื่นๆ"
+              subtitle={thaiMonth}
+              income={otherIncome}
+              expense={otherExpense}
+              incomeSlices={groupByCategory(otherIncomeTxns)}
+              expenseSlices={groupByCategory(otherExpenseTxns)}
+              centerCaption="คงเหลือ"
+            />
+
             {/* Recent Transactions */}
             <div>
               <div className="flex items-center justify-between mb-2">
