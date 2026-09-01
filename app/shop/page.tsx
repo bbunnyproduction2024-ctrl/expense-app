@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Purchase } from '@/lib/types'
+import { Purchase, Transaction } from '@/lib/types'
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import Link from 'next/link'
@@ -20,14 +20,30 @@ function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// note ของรายการซื้อ: "ซื้อ {ชื่อ} {จำนวน}_{หน่วย} @{ร้าน} (ของซื้อ)"
+function purchaseLabel(note: string) {
+  return note
+    .replace(/^ซื้อ\s*/, '')
+    .replace(/\s*\(ของซื้อ\)\s*$/, '')
+    .replace(/(\d+)_(\S+)/, '$1 $2') // "2_100g" -> "2 100g"
+    .replace(/(\d+)_(\s|$)/, '$1$2') // "1_ " -> "1 "
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 export default function ShopDashboard() {
   const [purchases, setPurchases] = useState<Purchase[]>([])
+  const [txns, setTxns] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [month, setMonth] = useState(() => format(new Date(), 'yyyy-MM'))
 
   useEffect(() => {
-    fetch('/api/purchases').then(r => r.json()).then(d => {
-      setPurchases(Array.isArray(d) ? d : [])
+    Promise.all([
+      fetch('/api/purchases').then(r => r.json()).catch(() => []),
+      fetch('/api/transactions').then(r => r.json()).catch(() => []),
+    ]).then(([p, t]) => {
+      setPurchases(Array.isArray(p) ? p : [])
+      setTxns(Array.isArray(t) ? t : [])
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
@@ -53,7 +69,12 @@ export default function ShopDashboard() {
   })
   const topItems = [...itemMap.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 5)
 
-  const recent = [...filtered].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, 5)
+  // รายการซื้อล่าสุด — ดึงจาก Transactions (มีวันที่จริงรายครั้ง) ไม่ใช่ pivot รายเดือน
+  const recentPurchases = txns
+    .filter(t => t.type === 'รายจ่าย' && (t.note ?? '').includes('(ของซื้อ)') && t.date.startsWith(month))
+    .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
+    .slice(0, 6)
+
   const thaiMonth = format(parseISO(`${month}-01`), 'MMMM yyyy', { locale: th })
 
   return (
@@ -126,19 +147,19 @@ export default function ShopDashboard() {
               </div>
             )}
 
-            {/* Recent */}
-            {recent.length > 0 && (
+            {/* Recent — รายการซื้อล่าสุด (เรียงตามวันที่จริง) */}
+            {recentPurchases.length > 0 && (
               <div>
-                <h2 className="font-semibold text-gray-700 mb-2">รายการล่าสุด</h2>
+                <h2 className="font-semibold text-gray-700 mb-2">รายการซื้อล่าสุด</h2>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
-                  {recent.map(p => (
-                    <div key={p.id} className="flex items-center px-4 py-3">
-                      <span className="text-lg mr-3">{catIcon(p.category)}</span>
+                  {recentPurchases.map(t => (
+                    <div key={t.id} className="flex items-center px-4 py-3">
+                      <span className="text-lg mr-3 flex-shrink-0">🛒</span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm truncate">{p.productName}</p>
-                        <p className="text-gray-400 text-xs">{p.date} · {p.qty} {p.unit}</p>
+                        <p className="font-medium text-gray-800 text-sm truncate">{purchaseLabel(t.note)}</p>
+                        <p className="text-gray-400 text-xs">{t.date}</p>
                       </div>
-                      <p className="font-semibold text-gray-700 text-sm">฿{fmt(p.total)}</p>
+                      <p className="font-semibold text-gray-700 text-sm flex-shrink-0">฿{fmt(t.amount)}</p>
                     </div>
                   ))}
                 </div>
