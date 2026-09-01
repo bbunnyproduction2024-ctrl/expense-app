@@ -11,6 +11,10 @@ export interface WheelSlice {
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
+  // กลุ่มรวม (วงล้อ "อื่นๆ")
+  'รายรับ Hop & Sip': '#16a34a',
+  'รายรับ อื่นๆ': '#0891b2',
+  รายจ่าย: '#b91c1c',
   // รายรับ
   'ร้าน Hop & Sip': '#16a34a',
   'ห้องพัก/Guesthouse': '#14b8a6',

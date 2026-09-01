@@ -107,13 +107,11 @@ export default function DashboardPage() {
   // ---- วงล้อสรุป ----
   const shopIncomeTxns = realMonthTxns.filter((t) => t.type === 'รายรับ' && isShopCategory(t.category))
   const shopExpenseTxns = realMonthTxns.filter((t) => t.type === 'รายจ่าย' && isShopCategory(t.category))
-  const otherIncomeTxns = realMonthTxns.filter((t) => t.type === 'รายรับ' && !isShopCategory(t.category))
-  const otherExpenseTxns = realMonthTxns.filter((t) => t.type === 'รายจ่าย' && !isShopCategory(t.category))
 
   const shopIncome = shopIncomeTxns.reduce((s, t) => s + t.amount, 0)
   const shopExpense = shopExpenseTxns.reduce((s, t) => s + t.amount, 0)
-  const otherIncome = otherIncomeTxns.reduce((s, t) => s + t.amount, 0)
-  const otherExpense = otherExpenseTxns.reduce((s, t) => s + t.amount, 0)
+  // รายรับที่ไม่ใช่ร้าน (วงล้อ "อื่นๆ" แยกรายรับเป็น Hop & Sip กับ อื่นๆ, รายจ่ายรวมทั้งหมด)
+  const otherIncome = totalIncome - shopIncome
 
   const thaiMonth = format(parseISO(`${selectedMonth}-01`), 'MMMM yyyy', { locale: th })
 
@@ -205,7 +203,7 @@ export default function DashboardPage() {
           <>
             {/* วงล้อสรุป */}
             <WheelSummary
-              title="วงล้อ 1 · ร้าน Hop & Sip"
+              title="ร้าน Hop & Sip"
               subtitle={thaiMonth}
               income={shopIncome}
               expense={shopExpense}
@@ -214,12 +212,15 @@ export default function DashboardPage() {
               centerCaption="กำไรร้าน"
             />
             <WheelSummary
-              title="วงล้อ 2 · อื่นๆ"
+              title="อื่นๆ"
               subtitle={thaiMonth}
-              income={otherIncome}
-              expense={otherExpense}
-              incomeSlices={groupByCategory(otherIncomeTxns)}
-              expenseSlices={groupByCategory(otherExpenseTxns)}
+              income={shopIncome + otherIncome}
+              expense={totalExpense}
+              incomeSlices={[
+                { label: 'รายรับ Hop & Sip', amount: shopIncome },
+                { label: 'รายรับ อื่นๆ', amount: otherIncome },
+              ]}
+              expenseSlices={[{ label: 'รายจ่าย', amount: totalExpense }]}
               centerCaption="คงเหลือ"
             />
 
