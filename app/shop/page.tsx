@@ -1,20 +1,26 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Purchase, Transaction } from '@/lib/types'
+import { Purchase, Transaction, PAYMENT_METHOD_LABELS } from '@/lib/types'
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import Link from 'next/link'
 
 const CATEGORY_ICON: Record<string, string> = {
+  'วัตถุดิบร้าน Hop & Sip': '🧂',
   'วัตถุดิบ ร้าน Hop & Sip': '🧂',
   'อุปกรณ์ร้าน Hop & Sip': '🛠️',
   'อุปกรณ์ เครื่องใช้': '🔧',
+  'ค่าใช้จ่ายในครอบครัว': '🔧',
   'อาหาร/เครื่องดื่ม': '🍽️',
   'ค่าสัตว์เลี้ยง': '🐾',
   'อื่นๆ (รายจ่าย)': '📦',
 }
 function catIcon(c: string) { return CATEGORY_ICON[c] ?? '📦' }
+
+function payLabel(methods: string[]) {
+  return methods.map(m => PAYMENT_METHOD_LABELS[m as keyof typeof PAYMENT_METHOD_LABELS] ?? m).join(' · ')
+}
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -61,19 +67,34 @@ export default function ShopDashboard() {
   const FAMILY_CATS = ['อุปกรณ์ เครื่องใช้', 'อาหาร/เครื่องดื่ม', 'ค่าสัตว์เลี้ยง', 'อื่นๆ (รายจ่าย)']
   const totalEquipment = filtered.filter(p => FAMILY_CATS.includes(p.category)).reduce((s, p) => s + p.total, 0)
 
-  // Top items this month
-  const itemMap = new Map<string, { total: number; qty: number; unit: string; category: string }>()
-  filtered.forEach(p => {
-    const e = itemMap.get(p.productName)
-    itemMap.set(p.productName, { total: (e?.total ?? 0) + p.total, qty: (e?.qty ?? 0) + p.qty, unit: p.unit, category: p.category })
-  })
-  const topItems = [...itemMap.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 5)
+  // รายการซื้อของเดือนนี้ จาก Transactions (มีวันที่จริง + ช่องทางจ่าย) ไม่ใช่ pivot รายเดือน
+  const shopPurchaseTxns = txns.filter(
+    t => t.type === 'รายจ่าย' && (t.note ?? '').includes('(ของซื้อ)') && t.date.startsWith(month)
+  )
 
-  // รายการซื้อล่าสุด — ดึงจาก Transactions (มีวันที่จริงรายครั้ง) ไม่ใช่ pivot รายเดือน
-  const recentPurchases = txns
-    .filter(t => t.type === 'รายจ่าย' && (t.note ?? '').includes('(ของซื้อ)') && t.date.startsWith(month))
+  const recentPurchases = [...shopPurchaseTxns]
     .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
     .slice(0, 6)
+
+  // ซื้อมากสุดเดือนนี้ — รวมยอดตามชื่อสินค้า พร้อมช่องทางที่ใช้จ่าย
+  const itemMap = new Map<string, { total: number; qty: number; unit: string; category: string; methods: Set<string> }>()
+  shopPurchaseTxns.forEach(t => {
+    const m = (t.note ?? '').match(/^ซื้อ (.+) (\d+(?:\.\d+)?)_(\S*)/)
+    const name = m ? m[1].trim() : purchaseLabel(t.note)
+    const qty = m ? Number(m[2]) || 0 : 0
+    const unit = m ? m[3] : ''
+    const e = itemMap.get(name)
+    const methods = e?.methods ?? new Set<string>()
+    methods.add(t.paymentMethod)
+    itemMap.set(name, {
+      total: (e?.total ?? 0) + t.amount,
+      qty: (e?.qty ?? 0) + qty,
+      unit: e?.unit || unit,
+      category: e?.category || t.category,
+      methods,
+    })
+  })
+  const topItems = [...itemMap.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 5)
 
   const thaiMonth = format(parseISO(`${month}-01`), 'MMMM yyyy', { locale: th })
 
@@ -125,41 +146,43 @@ export default function ShopDashboard() {
 
         {loading ? <div className="text-center py-8 text-gray-400">กำลังโหลด...</div> : (
           <>
-            {/* Top items */}
-            {topItems.length > 0 && (
+            {/* Recent — รายการซื้อล่าสุด (เรียงตามวันที่จริง) */}
+            {recentPurchases.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <h2 className="font-semibold text-gray-700">ซื้อมากสุดเดือนนี้</h2>
+                  <h2 className="font-semibold text-gray-700">รายการซื้อล่าสุด</h2>
                   <Link href="/shop/history" className="text-purple-500 text-sm font-medium">ดูทั้งหมด →</Link>
                 </div>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
-                  {topItems.map(([name, { total, qty, unit, category }]) => (
-                    <div key={name} className="flex items-center px-4 py-3">
-                      <span className="text-lg mr-3">{catIcon(category)}</span>
+                  {recentPurchases.map(t => (
+                    <div key={t.id} className="flex items-center px-4 py-3">
+                      <span className="text-lg mr-3 flex-shrink-0">{catIcon(t.category)}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm truncate">{name}</p>
-                        <p className="text-gray-400 text-xs">{qty.toLocaleString()} {unit}</p>
+                        <p className="font-medium text-gray-800 text-sm truncate">{purchaseLabel(t.note)}</p>
+                        <p className="text-gray-400 text-xs truncate">{t.date} · {payLabel([t.paymentMethod])}</p>
                       </div>
-                      <p className="font-semibold text-gray-700 text-sm">฿{fmt(total)}</p>
+                      <p className="font-semibold text-gray-700 text-sm flex-shrink-0">฿{fmt(t.amount)}</p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Recent — รายการซื้อล่าสุด (เรียงตามวันที่จริง) */}
-            {recentPurchases.length > 0 && (
+            {/* Top items */}
+            {topItems.length > 0 && (
               <div>
-                <h2 className="font-semibold text-gray-700 mb-2">รายการซื้อล่าสุด</h2>
+                <h2 className="font-semibold text-gray-700 mb-2">ซื้อมากสุดเดือนนี้</h2>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
-                  {recentPurchases.map(t => (
-                    <div key={t.id} className="flex items-center px-4 py-3">
-                      <span className="text-lg mr-3 flex-shrink-0">🛒</span>
+                  {topItems.map(([name, { total, qty, unit, category, methods }]) => (
+                    <div key={name} className="flex items-center px-4 py-3">
+                      <span className="text-lg mr-3 flex-shrink-0">{catIcon(category)}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm truncate">{purchaseLabel(t.note)}</p>
-                        <p className="text-gray-400 text-xs">{t.date}</p>
+                        <p className="font-medium text-gray-800 text-sm truncate">{name}</p>
+                        <p className="text-gray-400 text-xs truncate">
+                          {qty.toLocaleString()} {unit} · {payLabel([...methods])}
+                        </p>
                       </div>
-                      <p className="font-semibold text-gray-700 text-sm flex-shrink-0">฿{fmt(t.amount)}</p>
+                      <p className="font-semibold text-gray-700 text-sm flex-shrink-0">฿{fmt(total)}</p>
                     </div>
                   ))}
                 </div>
