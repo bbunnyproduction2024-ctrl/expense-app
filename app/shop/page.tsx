@@ -69,11 +69,19 @@ export default function ShopDashboard() {
   })
   const topItems = [...itemMap.entries()].sort((a, b) => b[1].total - a[1].total).slice(0, 5)
 
-  // รายการซื้อล่าสุด — ดึงจาก Transactions (มีวันที่จริงรายครั้ง) ไม่ใช่ pivot รายเดือน
-  const recentPurchases = txns
-    .filter(t => t.type === 'รายจ่าย' && (t.note ?? '').includes('(ของซื้อ)') && t.date.startsWith(month))
+  // รายการซื้อจาก Transactions (มีวันที่จริง + ช่องทางจ่าย) ไม่ใช่ pivot รายเดือน
+  const shopPurchaseTxns = txns.filter(
+    t => t.type === 'รายจ่าย' && (t.note ?? '').includes('(ของซื้อ)') && t.date.startsWith(month)
+  )
+  const recentPurchases = [...shopPurchaseTxns]
     .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
     .slice(0, 6)
+
+  // แยกตามช่องทางจ่าย
+  const paidBy = (m: string) => shopPurchaseTxns.filter(t => t.paymentMethod === m).reduce((s, t) => s + t.amount, 0)
+  const paidCash = paidBy('เงินสด')
+  const paidBank = paidBy('KBank')
+  const paidSaving = paidBy('ออมทรัพย์')
 
   const thaiMonth = format(parseISO(`${month}-01`), 'MMMM yyyy', { locale: th })
 
@@ -125,6 +133,27 @@ export default function ShopDashboard() {
 
         {loading ? <div className="text-center py-8 text-gray-400">กำลังโหลด...</div> : (
           <>
+            {/* จ่ายด้วยช่องทางไหน */}
+            <div className="bg-white rounded-2xl p-4 shadow-sm">
+              <p className="text-gray-400 text-sm mb-2">จ่ายด้วยช่องทางไหน</p>
+              <div className={`grid gap-2 ${paidSaving > 0 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                <div className="bg-amber-50 rounded-xl p-3">
+                  <p className="text-amber-500 text-xs mb-0.5">💵 เงินสด</p>
+                  <p className="text-amber-600 font-bold text-sm">฿{fmt(paidCash)}</p>
+                </div>
+                <div className="bg-sky-50 rounded-xl p-3">
+                  <p className="text-sky-500 text-xs mb-0.5">🏦 ธนาคาร</p>
+                  <p className="text-sky-600 font-bold text-sm">฿{fmt(paidBank)}</p>
+                </div>
+                {paidSaving > 0 && (
+                  <div className="bg-pink-50 rounded-xl p-3">
+                    <p className="text-pink-500 text-xs mb-0.5">🐷 ออมทรัพย์</p>
+                    <p className="text-pink-600 font-bold text-sm">฿{fmt(paidSaving)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* Top items */}
             {topItems.length > 0 && (
               <div>
