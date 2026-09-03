@@ -510,6 +510,80 @@ export async function addPurchase(input: PurchaseInput): Promise<void> {
   await upsertProduct({ name: input.productName, category: input.category, unit: input.unit, lastPrice: input.unitPrice })
 }
 
+// ลบรายการซื้อ "รายครั้ง" — ลบ 1 แถวใน Transactions แล้วหักจำนวน/ยอดออกจาก pivot Purchases
+export async function deleteShopPurchaseTxn(rowIndex: number): Promise<void> {
+  const sheets = getSheets()
+
+  const txnRes = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${SHEET_NAME}!A2:H`,
+  })
+  const txnRows = txnRes.data.values ?? []
+  const target = txnRows[rowIndex - 2]
+  const note: string = target?.[6] ?? ''
+  const date: string = target?.[1] ?? ''
+  const amount = Number(target?.[4]) || 0
+
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+  const txnSheet = meta.data.sheets?.find((s) => s.properties?.title === SHEET_NAME)
+  if (!txnSheet?.properties?.sheetId) throw new Error('Sheet not found')
+
+  // หัก pivot ถ้าแกะชื่อ/จำนวนจาก note ได้
+  const m = note.match(/^ซื้อ (.+) (\d+(?:\.\d+)?)_(\S*)/)
+  const monthKey = date.slice(0, 7)
+  if (m && monthKey) {
+    const productName = m[1].trim()
+    const qty = Number(m[2]) || 0
+    const unitPrice = qty ? amount / qty : 0
+
+    const pivotRes = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${PURCHASES_SHEET}!A2:F`,
+    })
+    const pivotRows = pivotRes.data.values ?? []
+    let idx = pivotRows.findIndex(
+      (r) => (r[2] ?? '').toLowerCase() === productName.toLowerCase() && Math.abs(Number(r[5]) - unitPrice) < 0.01
+    )
+    if (idx === -1) idx = pivotRows.findIndex((r) => (r[2] ?? '').toLowerCase() === productName.toLowerCase())
+
+    const { monthCols } = await getPurchasesHeaderMap(sheets)
+    const cols = monthCols.get(monthKey)
+    if (idx !== -1 && cols) {
+      const pivotRowNum = idx + 2
+      const cur = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${PURCHASES_SHEET}!${colLetter(cols.qty)}${pivotRowNum}:${colLetter(cols.total)}${pivotRowNum}`,
+      })
+      const curQty = Number(cur.data.values?.[0]?.[0]) || 0
+      const curTotal = Number(cur.data.values?.[0]?.[1]) || 0
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${PURCHASES_SHEET}!${colLetter(cols.qty)}${pivotRowNum}:${colLetter(cols.total)}${pivotRowNum}`,
+        valueInputOption: 'USER_ENTERED',
+        requestBody: { values: [[Math.max(0, curQty - qty), +Math.max(0, curTotal - amount).toFixed(2)]] },
+      })
+    }
+  }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId: txnSheet.properties.sheetId,
+              dimension: 'ROWS',
+              startIndex: rowIndex - 1,
+              endIndex: rowIndex,
+            },
+          },
+        },
+      ],
+    },
+  })
+}
+
 // id format: "{rowNum}:{monthKey}" e.g. "3:2026-06"
 export async function deletePurchase(id: string): Promise<void> {
   const [rowPart, monthKey] = id.split(':')

@@ -1,28 +1,48 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Purchase } from '@/lib/types'
+import { Transaction, PAYMENT_METHOD_LABELS } from '@/lib/types'
+import { format, parseISO } from 'date-fns'
+import { th } from 'date-fns/locale'
 
 const CATEGORY_ICON: Record<string, string> = {
-  'วัตถุดิบ ร้าน Hop & Sip': '🧂',
+  'วัตถุดิบร้าน Hop & Sip': '🧂',
   'อุปกรณ์ร้าน Hop & Sip': '🛠️',
-  'อุปกรณ์ เครื่องใช้': '🔧',
+  'ค่าใช้จ่ายในครอบครัว': '🔧',
   'อาหาร/เครื่องดื่ม': '🍽️',
   'ค่าสัตว์เลี้ยง': '🐾',
   'อื่นๆ (รายจ่าย)': '📦',
 }
 function catIcon(c: string) { return CATEGORY_ICON[c] ?? '📦' }
 
-type FilterCat = 'ทั้งหมด' | 'วัตถุดิบ ร้าน Hop & Sip' | 'อุปกรณ์ร้าน Hop & Sip' | 'อุปกรณ์ เครื่องใช้' | 'อาหาร/เครื่องดื่ม' | 'ค่าสัตว์เลี้ยง' | 'อื่นๆ (รายจ่าย)'
-import { format, parseISO } from 'date-fns'
-import { th } from 'date-fns/locale'
+const FILTER_CATS = [
+  'ทั้งหมด',
+  'วัตถุดิบร้าน Hop & Sip',
+  'อุปกรณ์ร้าน Hop & Sip',
+  'ค่าใช้จ่ายในครอบครัว',
+  'อาหาร/เครื่องดื่ม',
+  'ค่าสัตว์เลี้ยง',
+  'อื่นๆ (รายจ่าย)',
+] as const
+type FilterCat = typeof FILTER_CATS[number]
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// "ซื้อ {ชื่อ} {จำนวน}_{หน่วย} @{ร้าน} (ของซื้อ)" -> "ชื่อ จำนวน หน่วย @ร้าน"
+function purchaseLabel(note: string) {
+  return note
+    .replace(/^ซื้อ\s*/, '')
+    .replace(/\s*\(ของซื้อ\)\s*$/, '')
+    .replace(/(\d+)_(\S+)/, '$1 $2')
+    .replace(/(\d+)_(\s|$)/, '$1$2')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 export default function ShopHistoryPage() {
-  const [purchases, setPurchases] = useState<Purchase[]>([])
+  const [txns, setTxns] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [filterMonth, setFilterMonth] = useState(() => format(new Date(), 'yyyy-MM'))
   const [filterCat, setFilterCat] = useState<FilterCat>('ทั้งหมด')
@@ -31,33 +51,41 @@ export default function ShopHistoryPage() {
   async function fetchData() {
     setLoading(true)
     try {
-      const d = await fetch('/api/purchases').then(r => r.json())
-      setPurchases(Array.isArray(d) ? d : [])
+      const d = await fetch('/api/transactions').then(r => r.json())
+      setTxns(Array.isArray(d) ? d : [])
     } finally { setLoading(false) }
   }
 
   useEffect(() => { fetchData() }, [])
 
-  async function handleDelete(p: Purchase) {
-    if (!confirm(`ลบ "${p.productName}" ฿${fmt(p.total)} ใช่ไหม?`)) return
-    setDeleting(p.id)
+  async function handleDelete(t: Transaction) {
+    if (!confirm(`ลบ "${purchaseLabel(t.note)}" ฿${fmt(t.amount)} ใช่ไหม?`)) return
+    setDeleting(t.id)
     try {
-      await fetch('/api/purchases/delete', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) })
+      await fetch('/api/purchases/delete-one', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowIndex: parseInt(t.id) }),
+      })
       await fetchData()
     } finally { setDeleting(null) }
   }
 
+  const purchases = txns.filter(
+    t => t.type === 'รายจ่าย' && (t.note ?? '').includes('(ของซื้อ)')
+  )
+
   const filtered = purchases
-    .filter(p => p.date.startsWith(filterMonth) && (filterCat === 'ทั้งหมด' || p.category === filterCat))
-    .sort((a, b) => b.date.localeCompare(a.date))
+    .filter(t => t.date.startsWith(filterMonth) && (filterCat === 'ทั้งหมด' || t.category === filterCat))
+    .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
 
-  const totalAll = filtered.reduce((s, p) => s + p.total, 0)
-  const totalIngredient = filtered.filter(p => p.category === 'วัตถุดิบ ร้าน Hop & Sip').reduce((s, p) => s + p.total, 0)
-  const totalEquipment = filtered.filter(p => p.category === 'อุปกรณ์ เครื่องใช้').reduce((s, p) => s + p.total, 0)
+  const totalAll = filtered.reduce((s, t) => s + t.amount, 0)
+  const totalIngredient = filtered.filter(t => t.category === 'วัตถุดิบร้าน Hop & Sip').reduce((s, t) => s + t.amount, 0)
+  const totalShopEquip = filtered.filter(t => t.category === 'อุปกรณ์ร้าน Hop & Sip').reduce((s, t) => s + t.amount, 0)
 
-  const grouped = filtered.reduce<Record<string, Purchase[]>>((acc, p) => {
-    if (!acc[p.date]) acc[p.date] = []
-    acc[p.date].push(p)
+  const grouped = filtered.reduce<Record<string, Transaction[]>>((acc, t) => {
+    if (!acc[t.date]) acc[t.date] = []
+    acc[t.date].push(t)
     return acc
   }, {})
 
@@ -75,13 +103,13 @@ export default function ShopHistoryPage() {
         <span className="text-gray-300">|</span>
         <span className="text-orange-600">🧂 ฿{fmt(totalIngredient)}</span>
         <span className="text-gray-300">|</span>
-        <span className="text-purple-600">🔧 ฿{fmt(totalEquipment)}</span>
+        <span className="text-sky-600">🛠️ ฿{fmt(totalShopEquip)}</span>
       </div>
 
       <div className="px-4 py-3 space-y-3">
         {/* Filter */}
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
-          {(['ทั้งหมด', 'วัตถุดิบ ร้าน Hop & Sip', 'อุปกรณ์ร้าน Hop & Sip', 'อุปกรณ์ เครื่องใช้', 'อาหาร/เครื่องดื่ม', 'ค่าสัตว์เลี้ยง', 'อื่นๆ (รายจ่าย)'] as FilterCat[]).map(c => (
+          {FILTER_CATS.map(c => (
             <button key={c} onClick={() => setFilterCat(c)}
               className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
                 filterCat === c ? 'bg-purple-200 text-purple-800' : 'bg-white text-gray-500 border border-gray-200'
@@ -100,17 +128,19 @@ export default function ShopHistoryPage() {
               <div key={date}>
                 <p className="text-xs font-semibold text-gray-400 mb-1 px-1">{displayDate}</p>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
-                  {grouped[date].map(p => (
-                    <div key={p.id} className="flex items-center px-4 py-3">
-                      <span className="text-lg mr-3 flex-shrink-0">{catIcon(p.category)}</span>
+                  {grouped[date].map(t => (
+                    <div key={t.id} className="flex items-center px-4 py-3">
+                      <span className="text-lg mr-3 flex-shrink-0">{catIcon(t.category)}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm truncate">{p.productName}</p>
-                        <p className="text-gray-400 text-xs">{p.qty.toLocaleString()} {p.unit} × ฿{fmt(p.unitPrice)}{p.store ? ` · ${p.store}` : ''}{p.note ? ` · ${p.note}` : ''}</p>
+                        <p className="font-medium text-gray-800 text-sm truncate">{purchaseLabel(t.note)}</p>
+                        <p className="text-gray-400 text-xs truncate">
+                          {PAYMENT_METHOD_LABELS[t.paymentMethod] ?? t.paymentMethod}
+                        </p>
                       </div>
-                      <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0">฿{fmt(p.total)}</p>
-                      <button onClick={() => handleDelete(p)} disabled={deleting === p.id}
+                      <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0">฿{fmt(t.amount)}</p>
+                      <button onClick={() => handleDelete(t)} disabled={deleting === t.id}
                         className="text-gray-300 hover:text-red-400 text-lg flex-shrink-0">
-                        {deleting === p.id ? '⏳' : '🗑'}
+                        {deleting === t.id ? '⏳' : '🗑'}
                       </button>
                     </div>
                   ))}
