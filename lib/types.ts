@@ -81,6 +81,25 @@ export interface MonthlySummary {
   month: string
 }
 
+// ---- บิลประจำ (สำหรับคำนวณเงินใช้ได้ต่อวัน) ----
+export interface Bill {
+  id: string            // เลขแถวใน sheet
+  name: string
+  amount: number
+  dueDay: number        // วันของเดือนที่ครบกำหนด (1-31)
+  account: PaymentMethod
+  note: string
+  paidCycles: string[]  // รอบ "yyyy-MM" ที่กดจ่ายแล้ว
+}
+
+export interface BillInput {
+  name: string
+  amount: number
+  dueDay: number
+  account: PaymentMethod
+  note: string
+}
+
 // ---- Purchase tracker ----
 export type ItemCategory = 'วัตถุดิบ ร้าน Hop & Sip' | 'อุปกรณ์ร้าน Hop & Sip' | 'อุปกรณ์ เครื่องใช้' | 'อาหาร/เครื่องดื่ม' | 'ค่าสัตว์เลี้ยง' | 'อื่นๆ (รายจ่าย)'
 export type ItemUnit = string  // e.g. "5000g", "500ml", "30ชิ้น/อัน"

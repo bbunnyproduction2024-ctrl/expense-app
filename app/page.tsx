@@ -1,11 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, TRANSFER_CATEGORY, isShopCategory } from '@/lib/types'
+import { Transaction, Bill, TRANSFER_CATEGORY, isShopCategory } from '@/lib/types'
 import { format, startOfMonth, endOfMonth, isWithinInterval, isBefore, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import Link from 'next/link'
 import WheelSummary, { WheelSlice } from '@/components/WheelSummary'
+import { computeDailyBudget } from '@/lib/dailyBudget'
 
 function groupByCategory(txns: Transaction[]): WheelSlice[] {
   const m = new Map<string, number>()
@@ -23,14 +24,18 @@ const CARRY_OVER_START = '2026-08'
 
 export default function DashboardPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [bills, setBills] = useState<Bill[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), 'yyyy-MM'))
 
   useEffect(() => {
-    fetch('/api/transactions')
-      .then((r) => r.json())
-      .then((data) => {
-        setTransactions(Array.isArray(data) ? data : [])
+    Promise.all([
+      fetch('/api/transactions').then((r) => r.json()).catch(() => []),
+      fetch('/api/bills').then((r) => r.json()).catch(() => []),
+    ])
+      .then(([tx, bl]) => {
+        setTransactions(Array.isArray(tx) ? tx : [])
+        setBills(Array.isArray(bl) ? bl : [])
         setLoading(false)
       })
       .catch(() => setLoading(false))
@@ -112,6 +117,8 @@ export default function DashboardPage() {
   const shopExpense = shopExpenseTxns.reduce((s, t) => s + t.amount, 0)
   // รายรับที่ไม่ใช่ร้าน (วงล้อ "อื่นๆ" แยกรายรับเป็น Hop & Sip กับ อื่นๆ, รายจ่ายรวมทั้งหมด)
   const otherIncome = totalIncome - shopIncome
+
+  const budget = computeDailyBudget(transactions, bills)
 
   const thaiMonth = format(parseISO(`${selectedMonth}-01`), 'MMMM yyyy', { locale: th })
 
@@ -201,6 +208,44 @@ export default function DashboardPage() {
           <div className="text-center py-8 text-gray-400">กำลังโหลด...</div>
         ) : (
           <>
+            {/* เงินใช้ได้ต่อวัน */}
+            <Link href="/bills" className="block bg-white rounded-2xl p-4 shadow-sm active:opacity-90">
+              <div className="flex items-baseline justify-between mb-1">
+                <p className="text-gray-500 text-sm">ใช้ได้วันละ (ถึง {budget.horizon})</p>
+                <span className="text-slate-400 text-xs">บิลประจำ →</span>
+              </div>
+              <p className={`text-3xl font-bold ${budget.free < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                ฿{formatBaht(budget.perDay)}
+                <span className="text-base font-medium text-gray-400"> / วัน</span>
+              </p>
+              {budget.free < 0 && (
+                <p className="text-xs text-red-500 mt-0.5">เงินไม่พอสำหรับบิล + วัตถุดิบ — ต้องมีเงินเข้าก่อน</p>
+              )}
+              <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 space-y-1">
+                <div className="flex justify-between">
+                  <span>เงินที่มี (KBank + เงินสด)</span>
+                  <span className="text-gray-700 font-medium">฿{formatBaht(budget.spendable)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>− บิลค้างจ่าย ({budget.outstanding.length} รายการ)</span>
+                  <span className="text-red-500">−฿{formatBaht(budget.billsDue)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>− กันไว้ซื้อวัตถุดิบร้าน</span>
+                  <span className="text-red-500">−฿{formatBaht(budget.ingredientReserve)}</span>
+                </div>
+                <div className="flex justify-between font-semibold pt-1 border-t border-gray-100">
+                  <span>เหลือ ÷ {budget.daysLeft} วัน</span>
+                  <span className={budget.free < 0 ? 'text-red-500' : 'text-gray-700'}>
+                    ฿{formatBaht(Math.max(0, budget.free))}
+                  </span>
+                </div>
+              </div>
+              {bills.length === 0 && (
+                <p className="text-xs text-slate-400 mt-2">แตะเพื่อเพิ่มบิลประจำ (ค่าเช่า, เงินเดือน, ค่าน้ำไฟ ...)</p>
+              )}
+            </Link>
+
             {/* วงล้อสรุป */}
             <WheelSummary
               title="ร้าน Hop & Sip"

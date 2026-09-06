@@ -1,9 +1,10 @@
 import { google } from 'googleapis'
-import { Transaction, TransactionInput, TransferInput, Product, ProductInput, Purchase, PurchaseInput } from './types'
+import { Transaction, TransactionInput, TransferInput, Product, ProductInput, Purchase, PurchaseInput, Bill, BillInput } from './types'
 
 const SHEET_NAME = 'Transactions'
 const PRODUCTS_SHEET = 'Products'
 const PURCHASES_SHEET = 'Purchases'
+const BILLS_SHEET = 'Bills'
 const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID!
 
 function getAuth() {
@@ -215,6 +216,117 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
           },
         },
       }],
+    },
+  })
+}
+
+// ---- บิลประจำ (Bills) ----
+// A=ID | B=Name | C=Amount | D=DueDay | E=Account | F=Note | G=PaidCycles ("2026-09 2026-10")
+
+export async function ensureBillsSheet(): Promise<void> {
+  const sheets = getSheets()
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+  const titles = meta.data.sheets?.map((s) => s.properties?.title ?? '') ?? []
+  if (!titles.includes(BILLS_SHEET)) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: { requests: [{ addSheet: { properties: { title: BILLS_SHEET } } }] },
+    })
+  }
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${BILLS_SHEET}!A1`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [['ID', 'Name', 'Amount', 'DueDay', 'Account', 'Note', 'PaidCycles']] },
+  })
+}
+
+export async function getBills(): Promise<Bill[]> {
+  const sheets = getSheets()
+  await ensureBillsSheet()
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${BILLS_SHEET}!A2:G`,
+  })
+  return (res.data.values ?? [])
+    .map((row, i) => ({
+      id: String(i + 2),
+      name: row[1] ?? '',
+      amount: Number(row[2]) || 0,
+      dueDay: Math.min(31, Math.max(1, Number(row[3]) || 1)),
+      account: (row[4] ?? 'KBank') as Bill['account'],
+      note: row[5] ?? '',
+      paidCycles: String(row[6] ?? '').split(/[\s,]+/).filter(Boolean),
+    }))
+    .filter((b) => b.name)
+}
+
+export async function addBill(input: BillInput): Promise<void> {
+  const sheets = getSheets()
+  await ensureBillsSheet()
+  const all = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${BILLS_SHEET}!A:A` })
+  const nextRow = (all.data.values?.length ?? 1) + 1
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${BILLS_SHEET}!A${nextRow}`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: [[nextRow - 1, input.name, input.amount, input.dueDay, input.account, input.note, '']] },
+  })
+}
+
+export async function updateBill(
+  rowIndex: number,
+  fields: { name?: string; amount?: number; dueDay?: number; account?: string; note?: string }
+): Promise<void> {
+  const sheets = getSheets()
+  const set = async (col: string, value: string | number) =>
+    sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${BILLS_SHEET}!${col}${rowIndex}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: { values: [[value]] },
+    })
+  if (fields.name !== undefined) await set('B', fields.name)
+  if (fields.amount !== undefined) await set('C', fields.amount)
+  if (fields.dueDay !== undefined) await set('D', fields.dueDay)
+  if (fields.account !== undefined) await set('E', fields.account)
+  if (fields.note !== undefined) await set('F', fields.note)
+}
+
+// เปิด/ปิดสถานะ "จ่ายแล้ว" ของบิลในรอบ yyyy-MM
+export async function setBillPaid(rowIndex: number, cycle: string, paid: boolean): Promise<void> {
+  const sheets = getSheets()
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${BILLS_SHEET}!G${rowIndex}`,
+  })
+  const cur = String(res.data.values?.[0]?.[0] ?? '').split(/[\s,]+/).filter(Boolean)
+  const set = new Set(cur)
+  if (paid) set.add(cycle)
+  else set.delete(cycle)
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${BILLS_SHEET}!G${rowIndex}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[[...set].sort().join(' ')]] },
+  })
+}
+
+export async function deleteBill(rowIndex: number): Promise<void> {
+  const sheets = getSheets()
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+  const sheet = meta.data.sheets?.find((s) => s.properties?.title === BILLS_SHEET)
+  if (!sheet?.properties?.sheetId) throw new Error('Bills sheet not found')
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: { sheetId: sheet.properties.sheetId, dimension: 'ROWS', startIndex: rowIndex - 1, endIndex: rowIndex },
+          },
+        },
+      ],
     },
   })
 }
