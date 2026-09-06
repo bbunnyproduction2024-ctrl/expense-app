@@ -220,8 +220,9 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
   })
 }
 
-// ---- บิลประจำ (Bills) ----
-// A=ID | B=Name | C=Amount | D=DueDay | E=Account | F=Note | G=PaidCycles ("2026-09 2026-10")
+// ---- บิลประจำ / เงินกันไว้ (Bills) ----
+// A=ID | B=Name | C=Amount | D=DueDay | E=Account | F=Note | G=PaidCycles | H=Type | I=Done
+const BILLS_HEADER = ['ID', 'Name', 'Amount', 'DueDay', 'Account', 'Note', 'PaidCycles', 'Type', 'Done']
 
 export async function ensureBillsSheet(): Promise<void> {
   const sheets = getSheets()
@@ -237,7 +238,7 @@ export async function ensureBillsSheet(): Promise<void> {
     spreadsheetId: SPREADSHEET_ID,
     range: `${BILLS_SHEET}!A1`,
     valueInputOption: 'RAW',
-    requestBody: { values: [['ID', 'Name', 'Amount', 'DueDay', 'Account', 'Note', 'PaidCycles']] },
+    requestBody: { values: [BILLS_HEADER] },
   })
 }
 
@@ -246,18 +247,24 @@ export async function getBills(): Promise<Bill[]> {
   await ensureBillsSheet()
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${BILLS_SHEET}!A2:G`,
+    range: `${BILLS_SHEET}!A2:I`,
   })
   return (res.data.values ?? [])
-    .map((row, i) => ({
-      id: String(i + 2),
-      name: row[1] ?? '',
-      amount: Number(row[2]) || 0,
-      dueDay: Math.min(31, Math.max(1, Number(row[3]) || 1)),
-      account: (row[4] ?? 'KBank') as Bill['account'],
-      note: row[5] ?? '',
-      paidCycles: String(row[6] ?? '').split(/[\s,]+/).filter(Boolean),
-    }))
+    .map((row, i) => {
+      const t = String(row[7] ?? 'monthly').trim()
+      const type: Bill['type'] = t === 'yearly' || t === 'once' ? t : 'monthly'
+      return {
+        id: String(i + 2),
+        name: row[1] ?? '',
+        amount: Number(row[2]) || 0,
+        dueDay: Math.min(31, Math.max(1, Number(row[3]) || 1)),
+        account: (row[4] ?? 'KBank') as Bill['account'],
+        note: row[5] ?? '',
+        paidCycles: String(row[6] ?? '').split(/[\s,]+/).filter(Boolean),
+        type,
+        done: /^(true|1|yes)$/i.test(String(row[8] ?? '').trim()),
+      }
+    })
     .filter((b) => b.name)
 }
 
@@ -270,13 +277,15 @@ export async function addBill(input: BillInput): Promise<void> {
     spreadsheetId: SPREADSHEET_ID,
     range: `${BILLS_SHEET}!A${nextRow}`,
     valueInputOption: 'USER_ENTERED',
-    requestBody: { values: [[nextRow - 1, input.name, input.amount, input.dueDay, input.account, input.note, '']] },
+    requestBody: {
+      values: [[nextRow - 1, input.name, input.amount, input.dueDay, input.account, input.note, '', input.type, '']],
+    },
   })
 }
 
 export async function updateBill(
   rowIndex: number,
-  fields: { name?: string; amount?: number; dueDay?: number; account?: string; note?: string }
+  fields: { name?: string; amount?: number; dueDay?: number; account?: string; note?: string; type?: string; done?: boolean }
 ): Promise<void> {
   const sheets = getSheets()
   const set = async (col: string, value: string | number) =>
@@ -291,6 +300,13 @@ export async function updateBill(
   if (fields.dueDay !== undefined) await set('D', fields.dueDay)
   if (fields.account !== undefined) await set('E', fields.account)
   if (fields.note !== undefined) await set('F', fields.note)
+  if (fields.type !== undefined) await set('H', fields.type)
+  if (fields.done !== undefined) await set('I', fields.done ? 'TRUE' : '')
+}
+
+// เปิด/ปิดสถานะ "เก็บครบ/ใช้แล้ว" ของเงินก้อน (type = once)
+export async function setBillDone(rowIndex: number, done: boolean): Promise<void> {
+  await updateBill(rowIndex, { done })
 }
 
 // เปิด/ปิดสถานะ "จ่ายแล้ว" ของบิลในรอบ yyyy-MM

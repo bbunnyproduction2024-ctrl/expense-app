@@ -14,8 +14,16 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
-    const body: BillInput = await request.json()
-    if (!body.name || !body.amount || !body.dueDay) {
+    const raw = await request.json()
+    const body: BillInput = {
+      name: raw.name,
+      amount: raw.amount,
+      dueDay: raw.dueDay || 1,
+      account: raw.account || 'KBank',
+      note: raw.note || '',
+      type: raw.type === 'yearly' || raw.type === 'once' ? raw.type : 'monthly',
+    }
+    if (!body.name || !body.amount) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
     await addBill(body)
