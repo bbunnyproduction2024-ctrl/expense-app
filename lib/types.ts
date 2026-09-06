@@ -82,7 +82,7 @@ export interface MonthlySummary {
 }
 
 // ---- บิลประจำ / เงินกันไว้ (สำหรับคำนวณเงินใช้ได้ต่อวัน) ----
-// monthly = จ่ายทุกเดือน | yearly = จ่ายรายปี เก็บเดือนละ amount/12 | once = เก็บก้อนไว้จ่ายทีเดียว
+// monthly = จ่ายทุกเดือน | yearly = จ่ายรายปีเดือนที่กำหนด เก็บเฉลี่ยจนถึงกำหนด | once = เก็บก้อนไว้จ่ายทีเดียว
 export type BillType = 'monthly' | 'yearly' | 'once'
 
 export const BILL_TYPE_LABELS: Record<BillType, string> = {
@@ -91,11 +91,17 @@ export const BILL_TYPE_LABELS: Record<BillType, string> = {
   once: 'เก็บก้อน',
 }
 
+export const THAI_MONTHS_SHORT = [
+  'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+  'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.',
+]
+
 export interface Bill {
   id: string            // เลขแถวใน sheet
   name: string
   amount: number        // monthly/once = ยอดเต็ม, yearly = ยอดต่อปี
-  dueDay: number        // วันของเดือนที่ครบกำหนด (1-31) — ใช้เฉพาะ monthly
+  dueDay: number        // วันของเดือนที่ครบกำหนด (1-31)
+  dueMonth: number      // เดือนที่ต้องจ่าย (1-12) — ใช้เฉพาะ yearly
   account: PaymentMethod
   note: string
   type: BillType
@@ -107,6 +113,7 @@ export interface BillInput {
   name: string
   amount: number
   dueDay: number
+  dueMonth: number
   account: PaymentMethod
   note: string
   type: BillType

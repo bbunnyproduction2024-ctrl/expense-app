@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bill, BillType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS } from '@/lib/types'
+import { Bill, BillType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, THAI_MONTHS_SHORT } from '@/lib/types'
 import { format } from 'date-fns'
 
 function fmt(n: number) {
@@ -21,6 +21,7 @@ export default function BillsPage() {
   const [name, setName] = useState('')
   const [amount, setAmount] = useState('')
   const [dueDay, setDueDay] = useState('1')
+  const [dueMonth, setDueMonth] = useState('1')
   const [account, setAccount] = useState<PaymentMethod>('KBank')
   const [note, setNote] = useState('')
 
@@ -43,6 +44,7 @@ export default function BillsPage() {
     setName('')
     setAmount('')
     setDueDay('1')
+    setDueMonth('1')
     setAccount('KBank')
     setNote('')
   }
@@ -52,6 +54,7 @@ export default function BillsPage() {
     setName(b.name)
     setAmount(String(b.amount))
     setDueDay(String(b.dueDay))
+    setDueMonth(String(b.dueMonth || 1))
     setAccount(b.account)
     setNote(b.note)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -60,11 +63,12 @@ export default function BillsPage() {
   async function save() {
     const amt = parseFloat(amount.replace(/,/g, ''))
     const day = parseInt(dueDay) || 1
+    const dmonth = parseInt(dueMonth) || 1
     if (!name.trim() || !amt || amt <= 0) return
     if (type === 'monthly' && (day < 1 || day > 31)) return
     setBusy('save')
     try {
-      const payload = { name: name.trim(), amount: amt, dueDay: day, account, note: note.trim(), type }
+      const payload = { name: name.trim(), amount: amt, dueDay: day, dueMonth: dmonth, account, note: note.trim(), type }
       if (editId) {
         await fetch('/api/bills/update', {
           method: 'POST',
@@ -131,8 +135,9 @@ export default function BillsPage() {
   }
 
   // ยอดกันไว้รวมต่อเดือน (สำหรับ header)
+  const curMonthNo = new Date().getMonth() + 1
   const monthlyReserve = bills.reduce((s, b) => {
-    if (b.type === 'yearly') return s + b.amount / 12
+    if (b.type === 'yearly') return s + b.amount / (((b.dueMonth - curMonthNo - 1 + 12) % 12) + 1)
     if (b.type === 'once') return b.done ? s : s + b.amount
     return b.paidCycles.includes(CYCLE) ? s : s + b.amount
   }, 0)
@@ -168,7 +173,7 @@ export default function BillsPage() {
           </div>
           <p className="text-[11px] text-gray-400 -mt-1">
             {type === 'monthly' && 'จ่ายทุกเดือน — กันเต็มจำนวนจนกว่าจะกดจ่าย'}
-            {type === 'yearly' && 'ใส่ยอดต่อปี — ระบบกันไว้เดือนละ 1/12'}
+            {type === 'yearly' && 'ใส่ยอดต่อปี + เดือนที่จ่าย — ระบบเฉลี่ยกันไว้ให้พอดีวันครบกำหนด'}
             {type === 'once' && 'เก็บก้อนไว้จ่ายทีเดียว — กันไว้จนกดว่าใช้แล้ว'}
           </p>
 
@@ -209,12 +214,34 @@ export default function BillsPage() {
                 />
               </div>
             )}
+            {type === 'yearly' && (
+              <div className="w-28">
+                <label className="block text-xs text-gray-400 mb-1">เดือนที่จ่าย</label>
+                <select
+                  value={dueMonth}
+                  onChange={(e) => setDueMonth(e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-2 py-2 outline-none focus:border-slate-400 bg-white"
+                >
+                  {THAI_MONTHS_SHORT.map((m, i) => (
+                    <option key={m} value={i + 1}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
-          {type === 'yearly' && amount && (
-            <p className="text-[11px] text-slate-500">
-              = กันไว้เดือนละ ฿{fmt((parseFloat(amount.replace(/,/g, '')) || 0) / 12)}
-            </p>
-          )}
+          {type === 'yearly' && amount && (() => {
+            const cur = new Date().getMonth() + 1
+            const dm = parseInt(dueMonth) || 1
+            const monthsLeft = ((dm - cur - 1 + 12) % 12) + 1
+            const annual = parseFloat(amount.replace(/,/g, '')) || 0
+            return (
+              <p className="text-[11px] text-slate-500">
+                จ่าย {THAI_MONTHS_SHORT[dm - 1]} · อีก {monthsLeft} เดือน → กันไว้เดือนละ ฿{fmt(annual / monthsLeft)}
+              </p>
+            )
+          })()}
           <div>
             <label className="block text-xs text-gray-400 mb-1">บัญชี</label>
             <div className="flex gap-1.5">
@@ -266,8 +293,9 @@ export default function BillsPage() {
               const paid = b.type === 'monthly' && b.paidCycles.includes(CYCLE)
               const done = b.type === 'once' && b.done
               const dim = paid || done
-              const perMonth =
-                b.type === 'yearly' ? b.amount / 12 : b.type === 'once' ? (done ? 0 : b.amount) : b.amount
+              const curMonth = new Date().getMonth() + 1
+              const monthsLeft = ((b.dueMonth - curMonth - 1 + 12) % 12) + 1
+              const yearlyPerMonth = b.amount / monthsLeft
               return (
                 <div key={b.id} className="flex items-center px-4 py-3">
                   {b.type === 'yearly' ? (
@@ -292,14 +320,15 @@ export default function BillsPage() {
                     </p>
                     <p className="text-gray-400 text-xs truncate">
                       {b.type === 'monthly' && `รายเดือน · ครบกำหนดวันที่ ${b.dueDay}`}
-                      {b.type === 'yearly' && `รายปี ฿${fmt(b.amount)} · เดือนละ ฿${fmt(b.amount / 12)}`}
+                      {b.type === 'yearly' &&
+                        `รายปี ฿${fmt(b.amount)} · จ่าย ${THAI_MONTHS_SHORT[b.dueMonth - 1]} · อีก ${monthsLeft} เดือน`}
                       {b.type === 'once' && (done ? 'เก็บก้อน · ใช้แล้ว' : 'เก็บก้อน · กันไว้อยู่')}
                       {` · ${PAYMENT_METHOD_LABELS[b.account] ?? b.account}`}
                       {b.note ? ` · ${b.note}` : ''}
                     </p>
                   </div>
                   <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0 text-right">
-                    ฿{fmt(b.type === 'yearly' ? perMonth : b.amount)}
+                    ฿{fmt(b.type === 'yearly' ? yearlyPerMonth : b.amount)}
                     {b.type === 'yearly' && <span className="block text-[10px] font-normal text-gray-400">/เดือน</span>}
                   </p>
                   <button onClick={() => startEdit(b)} className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0">
@@ -316,7 +345,7 @@ export default function BillsPage() {
 
         <p className="text-xs text-gray-400 px-1 leading-relaxed">
           <b>รายเดือน</b>: กด ○→✓ เมื่อจ่ายบิลรอบเดือนนี้แล้ว &nbsp;·&nbsp;
-          <b>รายปี</b>: ระบบกันไว้เดือนละ 1/12 ให้อัตโนมัติ &nbsp;·&nbsp;
+          <b>รายปี</b>: ระบบเฉลี่ยยอดต่อปี ÷ จำนวนเดือนที่เหลือถึงเดือนจ่าย &nbsp;·&nbsp;
           <b>เก็บก้อน</b>: กด ○→✓ เมื่อใช้เงินก้อนนั้นแล้ว
           <br />
           การ์ด &quot;ใช้ได้วันละ&quot; บนหน้าแรกจะคิดใหม่ให้อัตโนมัติ

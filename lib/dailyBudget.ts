@@ -9,8 +9,11 @@ export interface OutstandingBill {
 
 export interface SavingsItem {
   name: string
-  monthly: number // ยอดที่กันไว้ต่อเดือน (yearly = amount/12, once = amount เต็ม)
+  monthly: number // ยอดที่กันไว้ต่อเดือน (yearly = amount ÷ เดือนที่เหลือถึงกำหนด, once = amount เต็ม)
   kind: 'yearly' | 'once'
+  annual?: number // ยอดต่อปี (yearly)
+  dueMonth?: number // 1-12 (yearly)
+  monthsUntilDue?: number // (yearly)
 }
 
 export interface DailyBudget {
@@ -71,10 +74,15 @@ export function computeDailyBudget(
   const monthlyOutstanding: OutstandingBill[] = []
   const savingsItems: SavingsItem[] = []
 
+  const curMonth = mo + 1 // 1-12
   for (const b of bills) {
     if (b.type === 'yearly') {
-      const monthly = b.amount / 12
-      if (monthly > 0) savingsItems.push({ name: b.name, monthly, kind: 'yearly' })
+      const dm = Math.min(12, Math.max(1, b.dueMonth || 1))
+      // จำนวนเดือนจากตอนนี้ถึงเดือนที่ต้องจ่าย (1-12); ถ้าอยู่ในเดือนที่จ่ายพอดี = 12 (เก็บสำหรับปีหน้า)
+      const monthsUntilDue = ((dm - curMonth - 1 + 12) % 12) + 1
+      const monthly = b.amount / monthsUntilDue
+      if (monthly > 0)
+        savingsItems.push({ name: b.name, monthly, kind: 'yearly', annual: b.amount, dueMonth: dm, monthsUntilDue })
       continue
     }
     if (b.type === 'once') {

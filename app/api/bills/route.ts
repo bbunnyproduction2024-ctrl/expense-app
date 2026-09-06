@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
       name: raw.name,
       amount: raw.amount,
       dueDay: raw.dueDay || 1,
+      dueMonth: Math.min(12, Math.max(1, Number(raw.dueMonth) || 1)),
       account: raw.account || 'KBank',
       note: raw.note || '',
       type: raw.type === 'yearly' || raw.type === 'once' ? raw.type : 'monthly',
