@@ -43,12 +43,17 @@ function clampDueDate(cycle: string, day: number): string {
 export function computeDailyBudget(
   txns: Transaction[],
   bills: Bill[],
-  today: Date = new Date()
+  today: Date = new Date(),
+  // นับ "เงินที่มี" จากรายการตั้งแต่เดือนนี้เป็นต้นไป (ให้ตรงกับการ์ดคงเหลือหน้าแรก)
+  sinceCycle = '2026-08'
 ): DailyBudget {
   const net = (f: (t: Transaction) => boolean) =>
     txns.filter(f).reduce((s, t) => s + (t.type === 'รายรับ' ? t.amount : -t.amount), 0)
 
-  const spendable = net((t) => t.paymentMethod === 'KBank') + net((t) => t.paymentMethod === 'เงินสด')
+  // เงินที่ใช้ได้ = ยอดคงเหลือ KBank + เงินสด (สุทธิตั้งแต่ sinceCycle — ไม่รวม มิ.ย./ก.ค. ที่ยกยอดเอง)
+  const spendable =
+    net((t) => t.paymentMethod === 'KBank' && t.date.slice(0, 7) >= sinceCycle) +
+    net((t) => t.paymentMethod === 'เงินสด' && t.date.slice(0, 7) >= sinceCycle)
 
   const y = today.getFullYear()
   const mo = today.getMonth() // 0-based

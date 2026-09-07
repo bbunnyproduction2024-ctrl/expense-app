@@ -118,7 +118,7 @@ export default function DashboardPage() {
   // รายรับที่ไม่ใช่ร้าน (วงล้อ "อื่นๆ" แยกรายรับเป็น Hop & Sip กับ อื่นๆ, รายจ่ายรวมทั้งหมด)
   const otherIncome = totalIncome - shopIncome
 
-  const budget = computeDailyBudget(transactions, bills)
+  const budget = computeDailyBudget(transactions, bills, new Date(), CARRY_OVER_START)
 
   const thaiMonth = format(parseISO(`${selectedMonth}-01`), 'MMMM yyyy', { locale: th })
 
@@ -210,16 +210,18 @@ export default function DashboardPage() {
           <>
             {/* เงินใช้ได้ต่อวัน */}
             <Link href="/bills" className="block bg-white rounded-2xl p-4 shadow-sm active:opacity-90">
-              <div className="flex items-baseline justify-between mb-1">
-                <p className="text-gray-500 text-sm">ใช้ได้วันละ (ถึง {budget.horizon})</p>
-                <span className="text-slate-400 text-xs">บิลประจำ →</span>
+              <div className="flex items-baseline justify-between mb-0.5">
+                <p className="text-gray-600 text-sm font-semibold">เงินใช้ได้ต่อวัน</p>
+                <span className="text-slate-400 text-xs">แก้ไขบิล →</span>
               </div>
+              <p className="text-[11px] text-gray-400 mb-1">เงินที่เหลือใช้จ่ายทั่วไป หลังกันบิล + ของร้าน + เก็บออมไว้แล้ว</p>
               <p className={`text-3xl font-bold ${budget.free < 0 ? 'text-red-500' : 'text-emerald-600'}`}>
                 ฿{formatBaht(budget.perDay)}
                 <span className="text-base font-medium text-gray-400"> / วัน</span>
+                <span className="text-xs font-normal text-gray-400"> (ถึง {budget.horizon})</span>
               </p>
               {budget.free < 0 && (
-                <p className="text-xs text-red-500 mt-0.5">เงินไม่พอสำหรับบิล + วัตถุดิบ — ต้องมีเงินเข้าก่อน</p>
+                <p className="text-xs text-red-500 mt-0.5">เงินที่มีไม่พอกับบิล + ของที่กันไว้ — รอเงินเข้า หรือปรับลดที่กันไว้</p>
               )}
               <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 space-y-1">
                 <div className="flex justify-between">
@@ -228,30 +230,32 @@ export default function DashboardPage() {
                 </div>
                 {budget.monthlyBillsDue > 0 && (
                   <div className="flex justify-between">
-                    <span>− บิลรายเดือนที่ต้องจ่าย ({budget.monthlyOutstanding.length})</span>
-                    <span className="text-red-500">−฿{formatBaht(budget.monthlyBillsDue)}</span>
+                    <span>− กันไว้จ่ายบิล{budget.monthlyOutstanding.length ? ` (${budget.monthlyOutstanding.map((b) => b.name).join(', ')})` : ''}</span>
+                    <span className="text-red-500 flex-shrink-0 ml-2">−฿{formatBaht(budget.monthlyBillsDue)}</span>
                   </div>
                 )}
                 {budget.savingsReserve > 0 && (
                   <div className="flex justify-between">
-                    <span>− เก็บออม (รายปี + ก้อน) /เดือน</span>
-                    <span className="text-red-500">−฿{formatBaht(budget.savingsReserve)}</span>
+                    <span>− เก็บออม รายปี + ก้อน (ต่อเดือน)</span>
+                    <span className="text-red-500 flex-shrink-0 ml-2">−฿{formatBaht(budget.savingsReserve)}</span>
                   </div>
                 )}
                 <div className="flex justify-between">
                   <span>− กันไว้ซื้อวัตถุดิบร้าน</span>
-                  <span className="text-red-500">−฿{formatBaht(budget.ingredientReserve)}</span>
+                  <span className="text-red-500 flex-shrink-0 ml-2">−฿{formatBaht(budget.ingredientReserve)}</span>
                 </div>
                 <div className="flex justify-between font-semibold pt-1 border-t border-gray-100">
-                  <span>เหลือ ÷ {budget.daysLeft} วัน</span>
-                  <span className={budget.free < 0 ? 'text-red-500' : 'text-gray-700'}>
+                  <span>เหลือใช้จ่ายทั่วไป ÷ {budget.daysLeft} วัน</span>
+                  <span className={`flex-shrink-0 ml-2 ${budget.free < 0 ? 'text-red-500' : 'text-gray-700'}`}>
                     ฿{formatBaht(Math.max(0, budget.free))}
                   </span>
                 </div>
               </div>
-              {bills.length === 0 && (
-                <p className="text-xs text-slate-400 mt-2">แตะเพื่อเพิ่มบิลประจำ / เงินกันไว้ (ค่าเช่า, เงินเดือน, ประกันรายปี, เก็บซื้อเมล็ดกาแฟ ...)</p>
-              )}
+              <p className="text-[11px] text-slate-400 mt-2">
+                {bills.length === 0
+                  ? 'แตะเพื่อเพิ่มบิลประจำ / เงินกันไว้ (ค่าเช่า, เงินเดือน, ประกันรายปี, เก็บซื้อเมล็ดกาแฟ ...)'
+                  : '"กันไว้" = ยังไม่ได้หักออกจริง แค่ไม่เอามาคิดเป็นเงินใช้จ่ายรายวัน · แตะการ์ดเพื่อกดว่าจ่ายบิลแล้ว'}
+              </p>
             </Link>
 
             {/* วงล้อสรุป */}
