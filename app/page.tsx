@@ -228,12 +228,17 @@ export default function DashboardPage() {
                   <span>เงินที่มี (KBank + เงินสด)</span>
                   <span className="text-gray-700 font-medium">฿{formatBaht(budget.spendable)}</span>
                 </div>
-                {budget.monthlyBillsDue > 0 && (
+                {budget.monthlyBillsDue > 0 ? (
                   <div className="flex justify-between">
-                    <span>− กันไว้จ่ายบิล{budget.monthlyOutstanding.length ? ` (${budget.monthlyOutstanding.map((b) => b.name).join(', ')})` : ''}</span>
+                    <span>− กันไว้จ่ายบิลที่ยังไม่จ่าย ({budget.monthlyOutstanding.map((b) => b.name).join(', ')})</span>
                     <span className="text-red-500 flex-shrink-0 ml-2">−฿{formatBaht(budget.monthlyBillsDue)}</span>
                   </div>
-                )}
+                ) : bills.some((b) => b.type === 'monthly') ? (
+                  <div className="flex justify-between text-green-600">
+                    <span>✓ จ่ายบิลรายเดือนครบแล้ว</span>
+                    <span className="flex-shrink-0 ml-2">฿0.00</span>
+                  </div>
+                ) : null}
                 {budget.savingsReserve > 0 && (
                   <div className="flex justify-between">
                     <span>− เก็บออม รายปี + ก้อน (ต่อเดือน)</span>

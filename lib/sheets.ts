@@ -221,8 +221,8 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
 }
 
 // ---- บิลประจำ / เงินกันไว้ (Bills) ----
-// A=ID | B=Name | C=Amount | D=DueDay | E=Account | F=Note | G=PaidCycles | H=Type | I=Done | J=DueMonth
-const BILLS_HEADER = ['ID', 'Name', 'Amount', 'DueDay', 'Account', 'Note', 'PaidCycles', 'Type', 'Done', 'DueMonth']
+// A=ID | B=Name | C=Amount | D=DueDay | E=Account | F=Note | G=PaidCycles | H=Type | I=Done | J=DueMonth | K=Months
+const BILLS_HEADER = ['ID', 'Name', 'Amount', 'DueDay', 'Account', 'Note', 'PaidCycles', 'Type', 'Done', 'DueMonth', 'Months']
 
 export async function ensureBillsSheet(): Promise<void> {
   const sheets = getSheets()
@@ -247,7 +247,7 @@ export async function getBills(): Promise<Bill[]> {
   await ensureBillsSheet()
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${BILLS_SHEET}!A2:J`,
+    range: `${BILLS_SHEET}!A2:K`,
   })
   return (res.data.values ?? [])
     .map((row, i) => {
@@ -259,6 +259,7 @@ export async function getBills(): Promise<Bill[]> {
         amount: Number(row[2]) || 0,
         dueDay: Math.min(31, Math.max(1, Number(row[3]) || 1)),
         dueMonth: Math.min(12, Math.max(1, Number(row[9]) || 1)),
+        months: Math.max(1, Number(row[10]) || 1),
         account: (row[4] ?? 'KBank') as Bill['account'],
         note: row[5] ?? '',
         paidCycles: String(row[6] ?? '').split(/[\s,]+/).filter(Boolean),
@@ -279,14 +280,26 @@ export async function addBill(input: BillInput): Promise<void> {
     range: `${BILLS_SHEET}!A${nextRow}`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
-      values: [[nextRow - 1, input.name, input.amount, input.dueDay, input.account, input.note, '', input.type, '', input.dueMonth]],
+      values: [
+        [nextRow - 1, input.name, input.amount, input.dueDay, input.account, input.note, '', input.type, '', input.dueMonth, input.months],
+      ],
     },
   })
 }
 
 export async function updateBill(
   rowIndex: number,
-  fields: { name?: string; amount?: number; dueDay?: number; dueMonth?: number; account?: string; note?: string; type?: string; done?: boolean }
+  fields: {
+    name?: string
+    amount?: number
+    dueDay?: number
+    dueMonth?: number
+    months?: number
+    account?: string
+    note?: string
+    type?: string
+    done?: boolean
+  }
 ): Promise<void> {
   const sheets = getSheets()
   const set = async (col: string, value: string | number) =>
@@ -300,6 +313,7 @@ export async function updateBill(
   if (fields.amount !== undefined) await set('C', fields.amount)
   if (fields.dueDay !== undefined) await set('D', fields.dueDay)
   if (fields.dueMonth !== undefined) await set('J', fields.dueMonth)
+  if (fields.months !== undefined) await set('K', fields.months)
   if (fields.account !== undefined) await set('E', fields.account)
   if (fields.note !== undefined) await set('F', fields.note)
   if (fields.type !== undefined) await set('H', fields.type)

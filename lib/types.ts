@@ -102,6 +102,7 @@ export interface Bill {
   amount: number        // monthly/once = ยอดเต็ม, yearly = ยอดต่อปี
   dueDay: number        // วันของเดือนที่ครบกำหนด (1-31)
   dueMonth: number      // เดือนที่ต้องจ่าย (1-12) — ใช้เฉพาะ yearly
+  months: number        // เก็บกี่เดือน (1 = ทีเดียว) — ใช้เฉพาะ once
   account: PaymentMethod
   note: string
   type: BillType
@@ -114,6 +115,7 @@ export interface BillInput {
   amount: number
   dueDay: number
   dueMonth: number
+  months: number
   account: PaymentMethod
   note: string
   type: BillType

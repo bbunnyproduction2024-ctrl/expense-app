@@ -9,11 +9,12 @@ export interface OutstandingBill {
 
 export interface SavingsItem {
   name: string
-  monthly: number // ยอดที่กันไว้ต่อเดือน (yearly = amount ÷ เดือนที่เหลือถึงกำหนด, once = amount เต็ม)
+  monthly: number // ยอดที่กันไว้ต่อเดือน (yearly = amount ÷ เดือนที่เหลือถึงกำหนด, once = amount ÷ จำนวนเดือน)
   kind: 'yearly' | 'once'
-  annual?: number // ยอดต่อปี (yearly)
+  total?: number // ยอดเต็ม (yearly = ต่อปี, once = ยอดก้อน)
   dueMonth?: number // 1-12 (yearly)
   monthsUntilDue?: number // (yearly)
+  months?: number // จำนวนเดือนที่เก็บ (once)
 }
 
 export interface DailyBudget {
@@ -58,7 +59,6 @@ export function computeDailyBudget(
   const y = today.getFullYear()
   const mo = today.getMonth() // 0-based
   const thisCycle = `${y}-${String(mo + 1).padStart(2, '0')}`
-  const nextCycle = `${mo === 11 ? y + 1 : y}-${String(((mo + 1) % 12) + 1).padStart(2, '0')}`
 
   // ---- งบวัตถุดิบร้าน: เฉลี่ยจากเดือนก่อนๆ − ที่ซื้อไปแล้วเดือนนี้ ----
   const rawByMonth = new Map<string, number>()
@@ -87,18 +87,19 @@ export function computeDailyBudget(
       const monthsUntilDue = ((dm - curMonth - 1 + 12) % 12) + 1
       const monthly = b.amount / monthsUntilDue
       if (monthly > 0)
-        savingsItems.push({ name: b.name, monthly, kind: 'yearly', annual: b.amount, dueMonth: dm, monthsUntilDue })
+        savingsItems.push({ name: b.name, monthly, kind: 'yearly', total: b.amount, dueMonth: dm, monthsUntilDue })
       continue
     }
     if (b.type === 'once') {
-      if (!b.done && b.amount > 0) savingsItems.push({ name: b.name, monthly: b.amount, kind: 'once' })
+      const months = Math.max(1, b.months || 1)
+      if (!b.done && b.amount > 0)
+        savingsItems.push({ name: b.name, monthly: b.amount / months, kind: 'once', total: b.amount, months })
       continue
     }
-    // monthly: ยังไม่จ่ายเดือนนี้ -> ค้าง (งวดนี้) ; จ่ายแล้ว -> กันงวดเดือนหน้า
+    // monthly: กันเงินไว้เฉพาะบิลที่ยังไม่กดจ่ายในรอบเดือนนี้
+    // กดจ่ายแล้ว = ปล่อยเงินคืน (ไม่กันรอบหน้าล่วงหน้า) ให้ตัวเลข "ใช้ได้ต่อวัน" ขยับขึ้นทันที
     if (!b.paidCycles.includes(thisCycle)) {
       monthlyOutstanding.push({ name: b.name, amount: b.amount, due: clampDueDate(thisCycle, b.dueDay), cycle: thisCycle })
-    } else if (!b.paidCycles.includes(nextCycle)) {
-      monthlyOutstanding.push({ name: b.name, amount: b.amount, due: clampDueDate(nextCycle, b.dueDay), cycle: nextCycle })
     }
   }
 
