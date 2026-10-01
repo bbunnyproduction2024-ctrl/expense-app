@@ -2,16 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { Transaction, TransactionType, TRANSFER_CATEGORY, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/types'
+import { cleanNote } from '@/lib/format'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 
 function formatBaht(amount: number) {
   return amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-// ตัด token [T123...] ที่ผูกคู่การโอนออกจากหมายเหตุ ก่อนแสดงผล
-function cleanNote(note: string) {
-  return note.replace(/\s*\[T\d+\]\s*/g, '').trim()
 }
 
 export default function HistoryPage() {
@@ -189,7 +185,7 @@ export default function HistoryPage() {
                           </p>
                           <p className="text-gray-400 text-xs truncate">
                             {PAYMENT_METHOD_LABELS[t.paymentMethod] ?? t.paymentMethod}
-                            {!isTransfer && t.note ? ` · ${t.note}` : ''}
+                            {!isTransfer && t.note ? ` · ${cleanNote(t.note)}` : ''}
                           </p>
                         </div>
                         <p className={`font-semibold text-sm mr-2 flex-shrink-0 ${

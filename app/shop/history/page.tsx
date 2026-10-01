@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, PAYMENT_METHOD_LABELS } from '@/lib/types'
+import { Transaction, PAYMENT_METHOD_LABELS, BILL_PAYMENT_CATEGORY } from '@/lib/types'
+import { cleanNote } from '@/lib/format'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -12,6 +13,7 @@ const CATEGORY_ICON: Record<string, string> = {
   'อาหาร/เครื่องดื่ม': '🍽️',
   'ค่าสัตว์เลี้ยง': '🐾',
   'อื่นๆ (รายจ่าย)': '📦',
+  [BILL_PAYMENT_CATEGORY]: '🧾',
 }
 function catIcon(c: string) { return CATEGORY_ICON[c] ?? '📦' }
 
@@ -22,6 +24,7 @@ const FILTER_CATS = [
   'ค่าใช้จ่ายในครอบครัว',
   'อาหาร/เครื่องดื่ม',
   'ค่าสัตว์เลี้ยง',
+  BILL_PAYMENT_CATEGORY,
   'อื่นๆ (รายจ่าย)',
 ] as const
 type FilterCat = typeof FILTER_CATS[number]
@@ -59,10 +62,12 @@ export default function ShopHistoryPage() {
   useEffect(() => { fetchData() }, [])
 
   async function handleDelete(t: Transaction) {
-    if (!confirm(`ลบ "${purchaseLabel(t.note)}" ฿${fmt(t.amount)} ใช่ไหม?`)) return
+    const isBill = t.category === BILL_PAYMENT_CATEGORY
+    const label = isBill ? cleanNote(t.note) : purchaseLabel(t.note)
+    if (!confirm(`ลบ "${label}" ฿${fmt(t.amount)} ใช่ไหม?`)) return
     setDeleting(t.id)
     try {
-      await fetch('/api/purchases/delete-one', {
+      await fetch(isBill ? '/api/transactions/delete' : '/api/purchases/delete-one', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rowIndex: parseInt(t.id) }),
@@ -71,17 +76,19 @@ export default function ShopHistoryPage() {
     } finally { setDeleting(null) }
   }
 
-  const purchases = txns.filter(
-    t => t.type === 'รายจ่าย' && (t.note ?? '').includes('(ของซื้อ)')
+  // รายจ่ายที่แสดงในหน้านี้ = รายการซื้อของร้าน (ของซื้อ) + รายการชำระบิลที่เกิดจาก /bills
+  const expenses = txns.filter(
+    t => t.type === 'รายจ่าย' && ((t.note ?? '').includes('(ของซื้อ)') || t.category === BILL_PAYMENT_CATEGORY)
   )
 
-  const filtered = purchases
+  const filtered = expenses
     .filter(t => t.date.startsWith(filterMonth) && (filterCat === 'ทั้งหมด' || t.category === filterCat))
     .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
 
   const totalAll = filtered.reduce((s, t) => s + t.amount, 0)
   const totalIngredient = filtered.filter(t => t.category === 'วัตถุดิบร้าน Hop & Sip').reduce((s, t) => s + t.amount, 0)
   const totalShopEquip = filtered.filter(t => t.category === 'อุปกรณ์ร้าน Hop & Sip').reduce((s, t) => s + t.amount, 0)
+  const totalBills = filtered.filter(t => t.category === BILL_PAYMENT_CATEGORY).reduce((s, t) => s + t.amount, 0)
 
   const grouped = filtered.reduce<Record<string, Transaction[]>>((acc, t) => {
     if (!acc[t.date]) acc[t.date] = []
@@ -92,7 +99,7 @@ export default function ShopHistoryPage() {
   return (
     <div className="min-h-full bg-[#f7ede4]">
       <div className="bg-[#f7ede4] px-4 pt-12 pb-3">
-        <h1 className="text-2xl font-bold text-gray-800 mb-3">ประวัติการซื้อ</h1>
+        <h1 className="text-2xl font-bold text-gray-800 mb-3">รายจ่าย</h1>
         <input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)}
           className="bg-white/70 text-gray-700 text-sm rounded-lg px-3 py-1.5 border border-purple-200 focus:outline-none" />
       </div>
@@ -104,6 +111,8 @@ export default function ShopHistoryPage() {
         <span className="text-orange-600">🧂 ฿{fmt(totalIngredient)}</span>
         <span className="text-gray-300">|</span>
         <span className="text-sky-600">🛠️ ฿{fmt(totalShopEquip)}</span>
+        <span className="text-gray-300">|</span>
+        <span className="text-slate-600">🧾 ฿{fmt(totalBills)}</span>
       </div>
 
       <div className="px-4 py-3 space-y-3">
@@ -128,13 +137,18 @@ export default function ShopHistoryPage() {
               <div key={date}>
                 <p className="text-xs font-semibold text-gray-400 mb-1 px-1">{displayDate}</p>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
-                  {grouped[date].map(t => (
+                  {grouped[date].map(t => {
+                    const isBill = t.category === BILL_PAYMENT_CATEGORY
+                    return (
                     <div key={t.id} className="flex items-center px-4 py-3">
                       <span className="text-lg mr-3 flex-shrink-0">{catIcon(t.category)}</span>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-800 text-sm truncate">{purchaseLabel(t.note)}</p>
+                        <p className="font-medium text-gray-800 text-sm truncate">
+                          {isBill ? cleanNote(t.note) : purchaseLabel(t.note)}
+                        </p>
                         <p className="text-gray-400 text-xs truncate">
                           {PAYMENT_METHOD_LABELS[t.paymentMethod] ?? t.paymentMethod}
+                          {isBill ? ' · ชำระบิล' : ''}
                         </p>
                       </div>
                       <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0">฿{fmt(t.amount)}</p>
@@ -143,7 +157,8 @@ export default function ShopHistoryPage() {
                         {deleting === t.id ? '⏳' : '🗑'}
                       </button>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )

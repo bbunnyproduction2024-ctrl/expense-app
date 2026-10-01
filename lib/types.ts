@@ -28,8 +28,12 @@ export const EXPENSE_CATEGORIES = [
   'ค่าสาธารณูปโภค',
   'Entertainment',
   'ออมเงิน',
+  'ชำระบิล',
   'อื่นๆ (รายจ่าย)',
 ] as const
+
+// หมวดที่ใช้แท็กรายการรายจ่ายที่เกิดอัตโนมัติเมื่อกด "จ่ายแล้ว" ที่บิลประจำ (/bills)
+export const BILL_PAYMENT_CATEGORY = 'ชำระบิล' as const
 
 // หมวดพิเศษสำหรับการโอนเงินระหว่างบัญชี — ไม่นับเป็นรายรับ/รายจ่ายจริง
 export const TRANSFER_CATEGORY = 'โอนเงิน' as const

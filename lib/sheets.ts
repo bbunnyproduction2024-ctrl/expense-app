@@ -325,17 +325,67 @@ export async function setBillDone(rowIndex: number, done: boolean): Promise<void
   await updateBill(rowIndex, { done })
 }
 
+// ลบทุกแถวใน Transactions ที่ Note มี tag นี้ (ใช้ลบรายจ่ายที่ผูกกับบิลตอนกดยกเลิก "จ่ายแล้ว")
+async function deleteTxnsByTag(tag: string): Promise<void> {
+  const sheets = getSheets()
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${SHEET_NAME}!A2:H` })
+  const rows = res.data.values ?? []
+  const indices: number[] = []
+  for (let i = 0; i < rows.length; i++) {
+    if ((rows[i][6] ?? '').includes(tag)) indices.push(i + 2)
+  }
+  if (indices.length === 0) return
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })
+  const sheet = meta.data.sheets?.find((s) => s.properties?.title === SHEET_NAME)
+  if (!sheet?.properties?.sheetId) return
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: indices
+        .sort((a, b) => b - a)
+        .map((r) => ({
+          deleteDimension: {
+            range: { sheetId: sheet.properties!.sheetId!, dimension: 'ROWS', startIndex: r - 1, endIndex: r },
+          },
+        })),
+    },
+  })
+}
+
 // เปิด/ปิดสถานะ "จ่ายแล้ว" ของบิลในรอบ yyyy-MM
+// กดจ่ายแล้ว -> บันทึกรายจ่ายจริงให้อัตโนมัติ (หมวด "ชำระบิล") ผูกด้วย tag [B<row>:<cycle>]
+// กดยกเลิก -> ลบรายจ่ายที่ผูกไว้นั้นทิ้ง
 export async function setBillPaid(rowIndex: number, cycle: string, paid: boolean): Promise<void> {
   const sheets = getSheets()
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${BILLS_SHEET}!G${rowIndex}`,
+    range: `${BILLS_SHEET}!B${rowIndex}:G${rowIndex}`,
   })
-  const cur = String(res.data.values?.[0]?.[0] ?? '').split(/[\s,]+/).filter(Boolean)
+  const row = res.data.values?.[0] ?? []
+  const name: string = row[0] ?? ''
+  const amount = Number(row[1]) || 0
+  const account = (row[3] || 'KBank') as Transaction['paymentMethod']
+  const cur = String(row[5] ?? '').split(/[\s,]+/).filter(Boolean)
+  const tag = `[B${rowIndex}:${cycle}]`
+
   const set = new Set(cur)
-  if (paid) set.add(cycle)
-  else set.delete(cycle)
+  if (paid) {
+    set.add(cycle)
+    if (amount > 0) {
+      await addTransaction({
+        date: new Date().toISOString().slice(0, 10),
+        type: 'รายจ่าย',
+        category: 'ชำระบิล' as TransactionInput['category'],
+        amount,
+        paymentMethod: account,
+        note: `ชำระบิล ${name} ${tag}`,
+      })
+    }
+  } else {
+    set.delete(cycle)
+    await deleteTxnsByTag(tag)
+  }
+
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
     range: `${BILLS_SHEET}!G${rowIndex}`,

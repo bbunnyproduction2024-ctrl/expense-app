@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Transaction, Bill, TRANSFER_CATEGORY, isShopCategory } from '@/lib/types'
+import { cleanNote } from '@/lib/format'
 import { format, startOfMonth, endOfMonth, isWithinInterval, isBefore, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import Link from 'next/link'
@@ -228,17 +229,27 @@ export default function DashboardPage() {
                   <span>เงินที่มี (KBank + เงินสด)</span>
                   <span className="text-gray-700 font-medium">฿{formatBaht(budget.spendable)}</span>
                 </div>
-                {budget.monthlyBillsDue > 0 ? (
+                {budget.billsDueThisMonth.length > 0 ? (
                   <div className="flex justify-between">
-                    <span>− กันไว้จ่ายบิลที่ยังไม่จ่าย ({budget.monthlyOutstanding.map((b) => b.name).join(', ')})</span>
-                    <span className="text-red-500 flex-shrink-0 ml-2">−฿{formatBaht(budget.monthlyBillsDue)}</span>
+                    <span>− บิลเดือนนี้ที่ยังไม่จ่าย ({budget.billsDueThisMonth.map((b) => b.name).join(', ')})</span>
+                    <span className="text-red-500 flex-shrink-0 ml-2">
+                      −฿{formatBaht(budget.billsDueThisMonth.reduce((s, b) => s + b.amount, 0))}
+                    </span>
                   </div>
                 ) : bills.some((b) => b.type === 'monthly') ? (
                   <div className="flex justify-between text-green-600">
-                    <span>✓ จ่ายบิลรายเดือนครบแล้ว</span>
+                    <span>✓ จ่ายบิลเดือนนี้ครบแล้ว</span>
                     <span className="flex-shrink-0 ml-2">฿0.00</span>
                   </div>
                 ) : null}
+                {budget.billsSavingAhead.length > 0 && (
+                  <div className="flex justify-between">
+                    <span>− เก็บไว้จ่ายบิลเดือนหน้า ({budget.billsSavingAhead.map((b) => b.name).join(', ')})</span>
+                    <span className="text-red-500 flex-shrink-0 ml-2">
+                      −฿{formatBaht(budget.billsSavingAhead.reduce((s, b) => s + b.amount, 0))}
+                    </span>
+                  </div>
+                )}
                 {budget.savingsReserve > 0 && (
                   <div className="flex justify-between">
                     <span>− เก็บออม รายปี + ก้อน (ต่อเดือน)</span>
@@ -259,7 +270,7 @@ export default function DashboardPage() {
               <p className="text-[11px] text-slate-400 mt-2">
                 {bills.length === 0
                   ? 'แตะเพื่อเพิ่มบิลประจำ / เงินกันไว้ (ค่าเช่า, เงินเดือน, ประกันรายปี, เก็บซื้อเมล็ดกาแฟ ...)'
-                  : '"กันไว้" = ยังไม่ได้หักออกจริง แค่ไม่เอามาคิดเป็นเงินใช้จ่ายรายวัน · แตะการ์ดเพื่อกดว่าจ่ายบิลแล้ว'}
+                  : 'กดจ่ายบิลที่ตัวบิล → บันทึกรายจ่ายให้อัตโนมัติ แล้วเริ่มกันเงินไว้จ่ายบิลเดือนถัดไปทันที (ไม่มีช่วงไม่กันเงินเลย)'}
               </p>
             </Link>
 
@@ -310,7 +321,7 @@ export default function DashboardPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-gray-800 text-sm truncate">{t.category}</p>
-                        <p className="text-gray-400 text-xs">{t.date}{t.note ? ` · ${t.note}` : ''}</p>
+                        <p className="text-gray-400 text-xs">{t.date}{t.note ? ` · ${cleanNote(t.note)}` : ''}</p>
                       </div>
                       <p className={`font-semibold ml-2 flex-shrink-0 ${t.type === 'รายรับ' ? 'text-green-600' : 'text-red-500'}`}>
                         {t.type === 'รายรับ' ? '+' : '-'}฿{formatBaht(t.amount)}
