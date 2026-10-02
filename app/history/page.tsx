@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, TransactionType, TRANSFER_CATEGORY, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/types'
+import { Transaction, TransactionType, PaymentMethod, TRANSFER_CATEGORY, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/types'
 import { cleanNote } from '@/lib/format'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -14,6 +14,7 @@ export default function HistoryPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState<TransactionType | 'ทั้งหมด'>('ทั้งหมด')
+  const [filterPayment, setFilterPayment] = useState<PaymentMethod | 'ทั้งหมด'>('ทั้งหมด')
   const [filterMonth, setFilterMonth] = useState(() => format(new Date(), 'yyyy-MM'))
   const [deleting, setDeleting] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -81,7 +82,8 @@ export default function HistoryPage() {
   const filtered = transactions.filter((t) => {
     const monthMatch = t.date.startsWith(filterMonth)
     const typeMatch = filterType === 'ทั้งหมด' || t.type === filterType
-    return monthMatch && typeMatch
+    const paymentMatch = filterPayment === 'ทั้งหมด' || t.paymentMethod === filterPayment
+    return monthMatch && typeMatch && paymentMatch
   }).sort((a, b) => b.date.localeCompare(a.date))
 
   // Group by date
@@ -137,6 +139,23 @@ export default function HistoryPage() {
               }`}
             >
               {t}
+            </button>
+          ))}
+        </div>
+
+        {/* Payment method filter */}
+        <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1">
+          {(['ทั้งหมด', ...PAYMENT_METHODS] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setFilterPayment(m)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                filterPayment === m
+                  ? 'bg-sky-100 text-sky-700 border border-sky-300'
+                  : 'bg-white text-gray-500 border border-gray-200'
+              }`}
+            >
+              {m === 'ทั้งหมด' ? m : PAYMENT_METHOD_LABELS[m]}
             </button>
           ))}
         </div>

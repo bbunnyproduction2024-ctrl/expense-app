@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Transaction, PAYMENT_METHOD_LABELS, BILL_PAYMENT_CATEGORY } from '@/lib/types'
+import { Transaction, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, BILL_PAYMENT_CATEGORY } from '@/lib/types'
 import { cleanNote } from '@/lib/format'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
@@ -49,6 +49,7 @@ export default function ShopHistoryPage() {
   const [loading, setLoading] = useState(true)
   const [filterMonth, setFilterMonth] = useState(() => format(new Date(), 'yyyy-MM'))
   const [filterCat, setFilterCat] = useState<FilterCat>('ทั้งหมด')
+  const [filterPayment, setFilterPayment] = useState<PaymentMethod | 'ทั้งหมด'>('ทั้งหมด')
   const [deleting, setDeleting] = useState<string | null>(null)
 
   async function fetchData() {
@@ -82,7 +83,11 @@ export default function ShopHistoryPage() {
   )
 
   const filtered = expenses
-    .filter(t => t.date.startsWith(filterMonth) && (filterCat === 'ทั้งหมด' || t.category === filterCat))
+    .filter(t =>
+      t.date.startsWith(filterMonth) &&
+      (filterCat === 'ทั้งหมด' || t.category === filterCat) &&
+      (filterPayment === 'ทั้งหมด' || t.paymentMethod === filterPayment)
+    )
     .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
 
   const totalAll = filtered.reduce((s, t) => s + t.amount, 0)
@@ -116,7 +121,7 @@ export default function ShopHistoryPage() {
       </div>
 
       <div className="px-4 py-3 space-y-3">
-        {/* Filter */}
+        {/* Filter: หมวดหมู่ */}
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
           {FILTER_CATS.map(c => (
             <button key={c} onClick={() => setFilterCat(c)}
@@ -124,6 +129,18 @@ export default function ShopHistoryPage() {
                 filterCat === c ? 'bg-purple-200 text-purple-800' : 'bg-white text-gray-500 border border-gray-200'
               }`}>
               {c === 'ทั้งหมด' ? c : `${catIcon(c)} ${c}`}
+            </button>
+          ))}
+        </div>
+
+        {/* Filter: ช่องทางจ่าย */}
+        <div className="flex gap-2 overflow-x-auto pb-0.5 -mx-1 px-1">
+          {(['ทั้งหมด', ...PAYMENT_METHODS] as const).map(m => (
+            <button key={m} onClick={() => setFilterPayment(m)}
+              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap ${
+                filterPayment === m ? 'bg-sky-100 text-sky-700 border border-sky-300' : 'bg-white text-gray-500 border border-gray-200'
+              }`}>
+              {m === 'ทั้งหมด' ? m : PAYMENT_METHOD_LABELS[m]}
             </button>
           ))}
         </div>

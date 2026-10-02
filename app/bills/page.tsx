@@ -26,6 +26,11 @@ export default function BillsPage() {
   const [account, setAccount] = useState<PaymentMethod>('KBank')
   const [note, setNote] = useState('')
 
+  // ยืนยันก่อนจ่าย: แก้ยอดจริง + เลือกบัญชีที่จ่ายได้ (ที่กันไว้เป็นแค่ยอดเผื่อ แต่ละเดือนไม่เท่ากัน)
+  const [payingId, setPayingId] = useState<string | null>(null)
+  const [payAmount, setPayAmount] = useState('')
+  const [payAccount, setPayAccount] = useState<PaymentMethod>('KBank')
+
   async function fetchData() {
     setLoading(true)
     try {
@@ -51,6 +56,7 @@ export default function BillsPage() {
     setNote('')
   }
   function startEdit(b: Bill) {
+    setPayingId(null)
     setEditId(b.id)
     setType(b.type)
     setName(b.name)
@@ -93,14 +99,36 @@ export default function BillsPage() {
     }
   }
 
-  async function togglePaid(b: Bill) {
-    const paid = b.paidCycles.includes(CYCLE)
+  function openPay(b: Bill) {
+    setPayingId(b.id)
+    setPayAmount(String(b.amount))
+    setPayAccount(b.account)
+  }
+
+  async function confirmPay(b: Bill) {
+    const amt = parseFloat(payAmount.replace(/,/g, ''))
+    if (!amt || amt <= 0) return
     setBusy(b.id)
     try {
       await fetch('/api/bills/paid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowIndex: parseInt(b.id), cycle: CYCLE, paid: !paid }),
+        body: JSON.stringify({ rowIndex: parseInt(b.id), cycle: CYCLE, paid: true, amount: amt, account: payAccount }),
+      })
+      setPayingId(null)
+      await fetchData()
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function unpay(b: Bill) {
+    setBusy(b.id)
+    try {
+      await fetch('/api/bills/paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowIndex: parseInt(b.id), cycle: CYCLE, paid: false }),
       })
       await fetchData()
     } finally {
@@ -328,51 +356,106 @@ export default function BillsPage() {
               const perMonthCol = b.type === 'yearly' ? yearlyPerMonth : b.type === 'once' && onceMonths > 1 ? oncePerMonth : b.amount
               const showPerMonth = b.type === 'yearly' || (b.type === 'once' && onceMonths > 1)
               return (
-                <div key={b.id} className="flex items-center px-4 py-3">
-                  {b.type === 'yearly' ? (
-                    <span className="w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 bg-slate-100 text-slate-500">
-                      📅
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => (b.type === 'once' ? toggleDone(b) : togglePaid(b))}
-                      disabled={busy === b.id}
-                      className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 border-2 ${
-                        dim ? 'bg-green-100 border-green-400 text-green-600' : 'bg-gray-50 border-gray-200 text-gray-300'
-                      }`}
-                      aria-label="สลับสถานะ"
-                    >
-                      {busy === b.id ? '⏳' : dim ? '✓' : '○'}
+                <div key={b.id}>
+                  <div className="flex items-center px-4 py-3">
+                    {b.type === 'yearly' ? (
+                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 bg-slate-100 text-slate-500">
+                        📅
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          if (b.type === 'once') return toggleDone(b)
+                          if (paid) return unpay(b)
+                          return payingId === b.id ? setPayingId(null) : openPay(b)
+                        }}
+                        disabled={busy === b.id}
+                        className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 border-2 ${
+                          dim
+                            ? 'bg-green-100 border-green-400 text-green-600'
+                            : payingId === b.id
+                              ? 'bg-blue-100 border-blue-400 text-blue-600'
+                              : 'bg-gray-50 border-gray-200 text-gray-300'
+                        }`}
+                        aria-label="สลับสถานะ"
+                      >
+                        {busy === b.id ? '⏳' : dim ? '✓' : '○'}
+                      </button>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-medium text-sm truncate ${dim ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                        {b.name}
+                      </p>
+                      <p className="text-gray-400 text-xs truncate">
+                        {b.type === 'monthly' && `รายเดือน · ครบกำหนดวันที่ ${b.dueDay}`}
+                        {b.type === 'yearly' &&
+                          `รายปี ฿${fmt(b.amount)} · จ่าย ${THAI_MONTHS_SHORT[b.dueMonth - 1]} · อีก ${monthsLeft} เดือน`}
+                        {b.type === 'once' &&
+                          (done
+                            ? 'เก็บก้อน · ใช้แล้ว'
+                            : onceMonths > 1
+                              ? `เก็บก้อน ฿${fmt(b.amount)} · เก็บ ${onceMonths} เดือน`
+                              : 'เก็บก้อน · กันเต็มจำนวน')}
+                        {` · ${PAYMENT_METHOD_LABELS[b.account] ?? b.account}`}
+                        {b.note ? ` · ${b.note}` : ''}
+                      </p>
+                    </div>
+                    <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0 text-right">
+                      ฿{fmt(perMonthCol)}
+                      {showPerMonth && <span className="block text-[10px] font-normal text-gray-400">/เดือน</span>}
+                    </p>
+                    <button onClick={() => startEdit(b)} className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0">
+                      ✏️
                     </button>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className={`font-medium text-sm truncate ${dim ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
-                      {b.name}
-                    </p>
-                    <p className="text-gray-400 text-xs truncate">
-                      {b.type === 'monthly' && `รายเดือน · ครบกำหนดวันที่ ${b.dueDay}`}
-                      {b.type === 'yearly' &&
-                        `รายปี ฿${fmt(b.amount)} · จ่าย ${THAI_MONTHS_SHORT[b.dueMonth - 1]} · อีก ${monthsLeft} เดือน`}
-                      {b.type === 'once' &&
-                        (done
-                          ? 'เก็บก้อน · ใช้แล้ว'
-                          : onceMonths > 1
-                            ? `เก็บก้อน ฿${fmt(b.amount)} · เก็บ ${onceMonths} เดือน`
-                            : 'เก็บก้อน · กันเต็มจำนวน')}
-                      {` · ${PAYMENT_METHOD_LABELS[b.account] ?? b.account}`}
-                      {b.note ? ` · ${b.note}` : ''}
-                    </p>
+                    <button onClick={() => remove(b)} disabled={busy === b.id} className="text-gray-300 hover:text-red-400 text-lg flex-shrink-0">
+                      🗑
+                    </button>
                   </div>
-                  <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0 text-right">
-                    ฿{fmt(perMonthCol)}
-                    {showPerMonth && <span className="block text-[10px] font-normal text-gray-400">/เดือน</span>}
-                  </p>
-                  <button onClick={() => startEdit(b)} className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0">
-                    ✏️
-                  </button>
-                  <button onClick={() => remove(b)} disabled={busy === b.id} className="text-gray-300 hover:text-red-400 text-lg flex-shrink-0">
-                    🗑
-                  </button>
+
+                  {payingId === b.id && (
+                    <div className="px-4 pb-3 pt-1 bg-blue-50 border-t border-blue-100 space-y-2.5">
+                      <p className="text-[11px] text-blue-500">ยืนยันยอดที่จ่ายจริง (ที่กันไว้เป็นแค่ยอดเผื่อ แก้ได้ถ้าเดือนนี้ไม่เท่าเดิม)</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-blue-500 w-16 flex-shrink-0">ยอดจ่าย ฿</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={payAmount}
+                          onChange={(e) => setPayAmount(e.target.value)}
+                          className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-xs text-blue-500 block mb-1">จ่ายจากบัญชี</span>
+                        <div className="flex gap-1.5">
+                          {PAYMENT_METHODS.map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => setPayAccount(m)}
+                              className={`flex-1 min-w-0 px-1 py-1.5 rounded-lg text-xs font-semibold border tracking-tight ${
+                                payAccount === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'bg-white border-gray-200 text-gray-500'
+                              }`}
+                            >
+                              {PAYMENT_METHOD_LABELS[m]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => setPayingId(null)} className="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg">
+                          ยกเลิก
+                        </button>
+                        <button
+                          onClick={() => confirmPay(b)}
+                          disabled={busy === b.id}
+                          className="px-4 py-1 bg-green-600 text-white text-xs rounded-lg font-semibold disabled:opacity-50"
+                        >
+                          {busy === b.id ? 'กำลังบันทึก...' : 'ยืนยันจ่ายแล้ว'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })}

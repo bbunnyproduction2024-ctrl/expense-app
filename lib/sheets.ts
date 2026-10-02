@@ -354,8 +354,16 @@ async function deleteTxnsByTag(tag: string): Promise<void> {
 
 // เปิด/ปิดสถานะ "จ่ายแล้ว" ของบิลในรอบ yyyy-MM
 // กดจ่ายแล้ว -> บันทึกรายจ่ายจริงให้อัตโนมัติ (หมวด "ชำระบิล") ผูกด้วย tag [B<row>:<cycle>]
+//   รับ overrideAmount/overrideAccount ได้ — เผื่อยอดจริงไม่เท่ากับที่กันไว้ หรือจ่ายคนละบัญชีกับที่ตั้งไว้
+//   (ไม่แก้ยอด/บัญชีเริ่มต้นของบิลใน sheet — เป็นแค่ยอดที่จ่ายจริงครั้งนี้ครั้งเดียว)
 // กดยกเลิก -> ลบรายจ่ายที่ผูกไว้นั้นทิ้ง
-export async function setBillPaid(rowIndex: number, cycle: string, paid: boolean): Promise<void> {
+export async function setBillPaid(
+  rowIndex: number,
+  cycle: string,
+  paid: boolean,
+  overrideAmount?: number,
+  overrideAccount?: string
+): Promise<void> {
   const sheets = getSheets()
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
@@ -363,8 +371,8 @@ export async function setBillPaid(rowIndex: number, cycle: string, paid: boolean
   })
   const row = res.data.values?.[0] ?? []
   const name: string = row[0] ?? ''
-  const amount = Number(row[1]) || 0
-  const account = (row[3] || 'KBank') as Transaction['paymentMethod']
+  const amount = overrideAmount && overrideAmount > 0 ? overrideAmount : Number(row[1]) || 0
+  const account = (overrideAccount || row[3] || 'KBank') as Transaction['paymentMethod']
   const cur = String(row[5] ?? '').split(/[\s,]+/).filter(Boolean)
   const tag = `[B${rowIndex}:${cycle}]`
 
