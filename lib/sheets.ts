@@ -193,8 +193,39 @@ export async function deleteTransferByRow(rowIndex: number): Promise<void> {
   })
 }
 
+// เอารอบ (cycle) ออกจาก PaidCycles ของบิล โดยไม่แตะ Transactions — ใช้ตอนลบรายจ่ายที่ผูกกับบิล
+// (ตัว deleteTransaction เป็นคนลบแถว Transactions เองอยู่แล้ว ไม่ให้ไปเรียก setBillPaid ซ้ำเพราะจะลบแถวซ้อนกัน/เลขแถวเพี้ยน)
+async function unmarkBillCycleByTag(tag: string): Promise<void> {
+  const m = tag.match(/\[B(\d+):([\d-]+)\]/)
+  if (!m) return
+  const rowIndex = parseInt(m[1])
+  const cycle = m[2]
+  const sheets = getSheets()
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${BILLS_SHEET}!G${rowIndex}` })
+  const cur = String(res.data.values?.[0]?.[0] ?? '').split(/[\s,]+/).filter(Boolean)
+  const set = new Set(cur)
+  if (!set.delete(cycle)) return // รอบนี้ไม่ได้ถูกมาร์คว่าจ่ายอยู่แล้ว ไม่ต้องเขียนทับ
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${BILLS_SHEET}!G${rowIndex}`,
+    valueInputOption: 'RAW',
+    requestBody: { values: [[[...set].sort().join(' ')]] },
+  })
+}
+
 export async function deleteTransaction(rowIndex: number): Promise<void> {
   const sheets = getSheets()
+
+  // ถ้าแถวนี้คือรายจ่ายที่เกิดจากการกด "จ่ายแล้ว" ที่บิลประจำ (มี tag [B<row>:<cycle>] ใน Note)
+  // ให้เอารอบนั้นออกจาก PaidCycles ของบิลด้วย ไม่งั้นบิลจะค้างสถานะ "จ่ายแล้ว" ทั้งที่รายจ่ายจริงถูกลบไปแล้ว
+  try {
+    const noteRes = await sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: `${SHEET_NAME}!G${rowIndex}` })
+    const note: string = noteRes.data.values?.[0]?.[0] ?? ''
+    const m = note.match(/\[B\d+:[\d-]+\]/)
+    if (m) await unmarkBillCycleByTag(m[0])
+  } catch {
+    // ไม่ critical — ถ้าหา tag ไม่เจอหรืออ่านไม่ได้ ก็แค่ลบรายการตามปกติ
+  }
 
   // Get spreadsheet to find sheetId
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID })

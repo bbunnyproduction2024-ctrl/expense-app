@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Purchase, Transaction, PAYMENT_METHOD_LABELS } from '@/lib/types'
-import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns'
+import { Transaction, PAYMENT_METHOD_LABELS } from '@/lib/types'
+import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import Link from 'next/link'
 
@@ -38,39 +38,28 @@ function purchaseLabel(note: string) {
 }
 
 export default function ShopDashboard() {
-  const [purchases, setPurchases] = useState<Purchase[]>([])
   const [txns, setTxns] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [month, setMonth] = useState(() => format(new Date(), 'yyyy-MM'))
 
   useEffect(() => {
-    Promise.all([
-      fetch('/api/purchases').then(r => r.json()).catch(() => []),
-      fetch('/api/transactions').then(r => r.json()).catch(() => []),
-    ]).then(([p, t]) => {
-      setPurchases(Array.isArray(p) ? p : [])
+    fetch('/api/transactions').then(r => r.json()).then(t => {
       setTxns(Array.isArray(t) ? t : [])
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
 
-  const monthStart = startOfMonth(parseISO(`${month}-01`))
-  const monthEnd = endOfMonth(parseISO(`${month}-01`))
-  const filtered = purchases.filter(p => {
-    try { return isWithinInterval(parseISO(p.date), { start: monthStart, end: monthEnd }) }
-    catch { return false }
-  })
-
-  const totalAll = filtered.reduce((s, p) => s + p.total, 0)
-  const totalIngredient = filtered.filter(p => p.category === 'วัตถุดิบ ร้าน Hop & Sip').reduce((s, p) => s + p.total, 0)
-  const totalShopEquip = filtered.filter(p => p.category === 'อุปกรณ์ร้าน Hop & Sip').reduce((s, p) => s + p.total, 0)
-  const FAMILY_CATS = ['อุปกรณ์ เครื่องใช้', 'อาหาร/เครื่องดื่ม', 'ค่าสัตว์เลี้ยง', 'อื่นๆ (รายจ่าย)']
-  const totalEquipment = filtered.filter(p => FAMILY_CATS.includes(p.category)).reduce((s, p) => s + p.total, 0)
-
-  // รายการซื้อของเดือนนี้ จาก Transactions (มีวันที่จริง + ช่องทางจ่าย) ไม่ใช่ pivot รายเดือน
+  // รายการซื้อของเดือนนี้ จาก Transactions (มีวันที่จริง + ช่องทางจ่าย)
+  // — แหล่งเดียวกับหน้า "รายจ่าย" และวงล้อสรุป ไม่ใช้ pivot Purchases เพราะเคยเพี้ยนไม่ตรงกัน
   const shopPurchaseTxns = txns.filter(
     t => t.type === 'รายจ่าย' && (t.note ?? '').includes('(ของซื้อ)') && t.date.startsWith(month)
   )
+
+  const totalAll = shopPurchaseTxns.reduce((s, t) => s + t.amount, 0)
+  const totalIngredient = shopPurchaseTxns.filter(t => t.category === 'วัตถุดิบร้าน Hop & Sip').reduce((s, t) => s + t.amount, 0)
+  const totalShopEquip = shopPurchaseTxns.filter(t => t.category === 'อุปกรณ์ร้าน Hop & Sip').reduce((s, t) => s + t.amount, 0)
+  const FAMILY_CATS = ['ค่าใช้จ่ายในครอบครัว', 'อาหาร/เครื่องดื่ม', 'ค่าสัตว์เลี้ยง', 'อื่นๆ (รายจ่าย)']
+  const totalEquipment = shopPurchaseTxns.filter(t => FAMILY_CATS.includes(t.category)).reduce((s, t) => s + t.amount, 0)
 
   const recentPurchases = [...shopPurchaseTxns]
     .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
@@ -189,7 +178,7 @@ export default function ShopDashboard() {
               </div>
             )}
 
-            {filtered.length === 0 && (
+            {shopPurchaseTxns.length === 0 && (
               <div className="bg-white rounded-2xl p-8 text-center text-gray-400">ยังไม่มีรายการเดือนนี้</div>
             )}
           </>
