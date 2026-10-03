@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react'
 import { Transaction, Bill, TRANSFER_CATEGORY, isShopCategory } from '@/lib/types'
 import { cleanNote } from '@/lib/format'
-import { format, startOfMonth, endOfMonth, isWithinInterval, isBefore, parseISO } from 'date-fns'
+import { computeCurrentBalances } from '@/lib/balances'
+import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 import Link from 'next/link'
 import WheelSummary, { WheelSlice } from '@/components/WheelSummary'
+import CurrentBalanceCard from '@/components/CurrentBalanceCard'
 import { computeDailyBudget } from '@/lib/dailyBudget'
 
 function groupByCategory(txns: Transaction[]): WheelSlice[] {
@@ -53,28 +55,7 @@ export default function DashboardPage() {
     }
   })
 
-  // รายการตั้งแต่ CARRY_OVER_START จนถึงก่อนเดือนที่เลือก — ใช้คำนวณยอดยกมา
-  const priorTxns = transactions.filter((t) => {
-    try {
-      return (
-        t.date.slice(0, 7) >= CARRY_OVER_START &&
-        isBefore(parseISO(t.date), monthStart)
-      )
-    } catch {
-      return false
-    }
-  })
-
-  const net = (txns: Transaction[]) =>
-    txns.reduce((s, t) => s + (t.type === 'รายรับ' ? t.amount : -t.amount), 0)
-
-  // ยอดยกมาจากเดือนก่อน (สะสมต่อเนื่อง)
-  const carryOver = net(priorTxns)
-  const carryKbank = net(priorTxns.filter((t) => t.paymentMethod === 'KBank'))
-  const carryCash = net(priorTxns.filter((t) => t.paymentMethod === 'เงินสด'))
-  const carrySaving = net(priorTxns.filter((t) => t.paymentMethod === 'ออมทรัพย์'))
-
-  // รายการจริง (ไม่รวมการโอนเงินระหว่างบัญชี) ใช้คิดรายรับ/รายจ่าย/หมวด/วงล้อ
+  // รายการจริง (ไม่รวมการโอนเงินระหว่างบัญชี) ใช้คิดรายรับ/รายจ่าย/หมวด/วงล้อ ของเดือนที่เลือก
   const realMonthTxns = monthTxns.filter((t) => t.category !== TRANSFER_CATEGORY)
 
   const totalIncome = realMonthTxns
@@ -84,18 +65,6 @@ export default function DashboardPage() {
   const totalExpense = realMonthTxns
     .filter((t) => t.type === 'รายจ่าย')
     .reduce((s, t) => s + t.amount, 0)
-
-  // ยอดคงเหลือ = ยอดยกมา + สุทธิของเดือนนี้
-  const balance = carryOver + totalIncome - totalExpense
-
-  const kbankBalance =
-    carryKbank + net(monthTxns.filter((t) => t.paymentMethod === 'KBank'))
-
-  const cashBalance =
-    carryCash + net(monthTxns.filter((t) => t.paymentMethod === 'เงินสด'))
-
-  const savingBalance =
-    carrySaving + net(monthTxns.filter((t) => t.paymentMethod === 'ออมทรัพย์'))
 
   const recent = [...realMonthTxns]
     .sort((a, b) => b.date.localeCompare(a.date) || parseInt(b.id) - parseInt(a.id))
@@ -140,20 +109,15 @@ export default function DashboardPage() {
           />
         </div>
 
-        {/* Balance Card */}
+        {/* ยอดคงเหลือตอนนี้ — เลขเดียวกับทุกหน้า ไม่ขึ้นกับเดือนที่เลือกด้านบน */}
         <div className="bg-white/60 rounded-2xl p-4">
-          <p className="text-rose-400 text-sm mb-1">{thaiMonth}</p>
-          <p className="text-3xl font-bold mb-1 text-gray-800">
-            {balance >= 0 ? '+' : ''}฿{formatBaht(balance)}
-          </p>
-          {priorTxns.length > 0 ? (
-            <p className="text-xs text-gray-500 mb-3">
-              ยอดยกมาจากเดือนก่อน: {carryOver >= 0 ? '+' : ''}฿{formatBaht(carryOver)}
-            </p>
-          ) : (
-            <p className="text-xs text-gray-400 mb-3">เริ่มนับยอดสะสมเดือนนี้</p>
-          )}
-          <div className="flex gap-3 mb-3">
+          <CurrentBalanceCard transactions={transactions} />
+        </div>
+
+        {/* สรุปรายรับ-รายจ่ายของเดือนที่เลือก */}
+        <div className="bg-white/60 rounded-2xl p-4 mt-3">
+          <p className="text-rose-400 text-sm mb-2">สรุปเดือน {thaiMonth}</p>
+          <div className="flex gap-3">
             <div className="flex-1 bg-green-500/20 rounded-xl p-3">
               <p className="text-green-700 text-xs mb-0.5">รายรับ</p>
               <p className="text-green-700 font-bold text-lg">฿{formatBaht(totalIncome)}</p>
@@ -161,27 +125,6 @@ export default function DashboardPage() {
             <div className="flex-1 bg-red-500/20 rounded-xl p-3">
               <p className="text-red-700 text-xs mb-0.5">รายจ่าย</p>
               <p className="text-red-700 font-bold text-lg">฿{formatBaht(totalExpense)}</p>
-            </div>
-          </div>
-          <p className="text-gray-500 text-xs mb-1.5">คงเหลือแต่ละช่องทาง</p>
-          <div className="grid grid-cols-3 gap-2">
-            <div className="bg-sky-500/10 rounded-xl p-2.5">
-              <p className="text-sky-600 text-[11px] mb-0.5">🏦 KBank</p>
-              <p className={`font-bold text-sm ${kbankBalance >= 0 ? 'text-sky-700' : 'text-red-500'}`}>
-                {kbankBalance >= 0 ? '+' : ''}฿{formatBaht(kbankBalance)}
-              </p>
-            </div>
-            <div className="bg-amber-500/10 rounded-xl p-2.5">
-              <p className="text-amber-600 text-[11px] mb-0.5">💵 เงินสด</p>
-              <p className={`font-bold text-sm ${cashBalance >= 0 ? 'text-amber-700' : 'text-red-500'}`}>
-                {cashBalance >= 0 ? '+' : ''}฿{formatBaht(cashBalance)}
-              </p>
-            </div>
-            <div className="bg-pink-500/10 rounded-xl p-2.5">
-              <p className="text-pink-600 text-[11px] mb-0.5">🐷 ออมทรัพย์</p>
-              <p className={`font-bold text-sm ${savingBalance >= 0 ? 'text-pink-700' : 'text-red-500'}`}>
-                {savingBalance >= 0 ? '+' : ''}฿{formatBaht(savingBalance)}
-              </p>
             </div>
           </div>
         </div>

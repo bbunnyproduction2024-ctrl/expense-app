@@ -1,4 +1,5 @@
 import { Bill, Transaction } from './types'
+import { computeCurrentBalances } from './balances'
 
 export interface OutstandingBill {
   name: string
@@ -50,13 +51,9 @@ export function computeDailyBudget(
   // นับ "เงินที่มี" จากรายการตั้งแต่เดือนนี้เป็นต้นไป (ให้ตรงกับการ์ดคงเหลือหน้าแรก)
   sinceCycle = '2026-08'
 ): DailyBudget {
-  const net = (f: (t: Transaction) => boolean) =>
-    txns.filter(f).reduce((s, t) => s + (t.type === 'รายรับ' ? t.amount : -t.amount), 0)
-
-  // เงินที่ใช้ได้ = ยอดคงเหลือ KBank + เงินสด (สุทธิตั้งแต่ sinceCycle — ไม่รวม มิ.ย./ก.ค. ที่ยกยอดเอง)
-  const spendable =
-    net((t) => t.paymentMethod === 'KBank' && t.date.slice(0, 7) >= sinceCycle) +
-    net((t) => t.paymentMethod === 'เงินสด' && t.date.slice(0, 7) >= sinceCycle)
+  // เงินที่ใช้ได้ = ยอดคงเหลือ KBank + เงินสด "ตอนนี้" (เลขเดียวกับการ์ดยอดคงเหลือทุกหน้า — ไม่รวม มิ.ย./ก.ค. ที่ยกยอดเอง)
+  const currentBalances = computeCurrentBalances(txns, sinceCycle)
+  const spendable = currentBalances.kbank + currentBalances.cash
 
   const y = today.getFullYear()
   const mo = today.getMonth() // 0-based

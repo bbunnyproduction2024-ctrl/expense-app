@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Transaction, TransactionType, PaymentMethod, TRANSFER_CATEGORY, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES } from '@/lib/types'
 import { cleanNote } from '@/lib/format'
+import CurrentBalanceCard from '@/components/CurrentBalanceCard'
 import { format, parseISO } from 'date-fns'
 import { th } from 'date-fns/locale'
 
@@ -114,14 +115,21 @@ export default function HistoryPage() {
         />
       </div>
 
-      {/* Summary bar */}
-      <div className="bg-rose-100 px-4 py-2 flex gap-4 text-sm">
+      {/* ยอดคงเหลือตอนนี้ — เลขเดียวกับหน้าแรก ไม่ขึ้นกับเดือน/ตัวกรองด้านล่าง */}
+      <div className="px-4">
+        <div className="bg-white rounded-2xl p-3 shadow-sm">
+          <CurrentBalanceCard transactions={transactions} size="compact" />
+        </div>
+      </div>
+
+      {/* Summary bar — สุทธิเฉพาะรายการที่กรองอยู่ */}
+      <div className="bg-rose-100 px-4 py-2 mt-3 flex gap-4 text-sm">
         <span className="text-green-600">รายรับ ฿{formatBaht(totalIncome)}</span>
         <span className="text-gray-300">|</span>
         <span className="text-red-500">รายจ่าย ฿{formatBaht(totalExpense)}</span>
         <span className="text-gray-300">|</span>
         <span className={`font-bold ${totalIncome - totalExpense >= 0 ? 'text-gray-700' : 'text-red-500'}`}>
-          คงเหลือ ฿{formatBaht(totalIncome - totalExpense)}
+          สุทธิ ฿{formatBaht(totalIncome - totalExpense)}
         </span>
       </div>
 
