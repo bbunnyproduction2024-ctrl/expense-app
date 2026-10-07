@@ -388,12 +388,14 @@ async function deleteTxnsByTag(tag: string): Promise<void> {
 //   รับ overrideAmount/overrideAccount ได้ — เผื่อยอดจริงไม่เท่ากับที่กันไว้ หรือจ่ายคนละบัญชีกับที่ตั้งไว้
 //   (ไม่แก้ยอด/บัญชีเริ่มต้นของบิลใน sheet — เป็นแค่ยอดที่จ่ายจริงครั้งนี้ครั้งเดียว)
 // กดยกเลิก -> ลบรายจ่ายที่ผูกไว้นั้นทิ้ง
+// recordExpense=false ใช้กับบิลรายปี — ติ๊กแค่เช็กลิสต์ "เก็บเงินเดือนนี้แล้ว" ไม่ใช่การจ่ายจริง เลยไม่บันทึกรายจ่าย
 export async function setBillPaid(
   rowIndex: number,
   cycle: string,
   paid: boolean,
   overrideAmount?: number,
-  overrideAccount?: string
+  overrideAccount?: string,
+  recordExpense = true
 ): Promise<void> {
   const sheets = getSheets()
   const res = await sheets.spreadsheets.values.get({
@@ -410,7 +412,7 @@ export async function setBillPaid(
   const set = new Set(cur)
   if (paid) {
     set.add(cycle)
-    if (amount > 0) {
+    if (recordExpense && amount > 0) {
       await addTransaction({
         date: new Date().toISOString().slice(0, 10),
         type: 'รายจ่าย',
@@ -422,7 +424,7 @@ export async function setBillPaid(
     }
   } else {
     set.delete(cycle)
-    await deleteTxnsByTag(tag)
+    if (recordExpense) await deleteTxnsByTag(tag)
   }
 
   await sheets.spreadsheets.values.update({

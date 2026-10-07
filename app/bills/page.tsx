@@ -2,14 +2,26 @@
 
 import { useEffect, useState } from 'react'
 import { Bill, BillType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, THAI_MONTHS_SHORT } from '@/lib/types'
-import { format } from 'date-fns'
+import { billCycleEntries, cyclesOf, CycleEntry } from '@/lib/billCycles'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-const CYCLE = format(new Date(), 'yyyy-MM')
+const { thisCycle: CYCLE, prevCycle: PREV_CYCLE, nextCycle: NEXT_CYCLE } = cyclesOf(new Date())
 const TYPES: BillType[] = ['monthly', 'yearly', 'once']
+
+function cycleLabel(cycle: string) {
+  if (cycle === PREV_CYCLE) return 'เดือนที่แล้ว'
+  if (cycle === CYCLE) return 'เดือนนี้'
+  if (cycle === NEXT_CYCLE) return 'เดือนหน้า'
+  const [y, m] = cycle.split('-').map(Number)
+  return `${THAI_MONTHS_SHORT[m - 1]} ${y}`
+}
+
+function payingKeyOf(billId: string, cycle: string) {
+  return `${billId}:${cycle}`
+}
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([])
@@ -27,7 +39,8 @@ export default function BillsPage() {
   const [note, setNote] = useState('')
 
   // ยืนยันก่อนจ่าย: แก้ยอดจริง + เลือกบัญชีที่จ่ายได้ (ที่กันไว้เป็นแค่ยอดเผื่อ แต่ละเดือนไม่เท่ากัน)
-  const [payingId, setPayingId] = useState<string | null>(null)
+  // คีย์ด้วย "billId:cycle" เพราะบิลเดียวอาจค้างได้หลายเดือน (เดือนที่แล้ว + เดือนนี้) พร้อมกัน
+  const [payingKey, setPayingKey] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
   const [payAccount, setPayAccount] = useState<PaymentMethod>('KBank')
 
@@ -56,7 +69,7 @@ export default function BillsPage() {
     setNote('')
   }
   function startEdit(b: Bill) {
-    setPayingId(null)
+    setPayingKey(null)
     setEditId(b.id)
     setType(b.type)
     setName(b.name)
@@ -99,41 +112,48 @@ export default function BillsPage() {
     }
   }
 
-  function openPay(b: Bill) {
-    setPayingId(b.id)
+  function openPay(b: Bill, cycle: string) {
+    setPayingKey(payingKeyOf(b.id, cycle))
     setPayAmount(String(b.amount))
     setPayAccount(b.account)
   }
 
-  async function confirmPay(b: Bill) {
-    const amt = parseFloat(payAmount.replace(/,/g, ''))
-    if (!amt || amt <= 0) return
-    setBusy(b.id)
+  // รายเดือน = จ่ายจริง บันทึกรายจ่ายอัตโนมัติ · รายปี = แค่เช็กลิสต์ "เก็บเดือนนี้แล้ว" ไม่บันทึกรายจ่าย
+  async function setPaid(b: Bill, cycle: string, paid: boolean, overrideAmount?: number, overrideAccount?: string) {
+    const key = payingKeyOf(b.id, cycle)
+    setBusy(key)
     try {
       await fetch('/api/bills/paid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowIndex: parseInt(b.id), cycle: CYCLE, paid: true, amount: amt, account: payAccount }),
+        body: JSON.stringify({
+          rowIndex: parseInt(b.id),
+          cycle,
+          paid,
+          amount: overrideAmount,
+          account: overrideAccount,
+          recordExpense: b.type !== 'yearly',
+        }),
       })
-      setPayingId(null)
+      setPayingKey(null)
       await fetchData()
     } finally {
       setBusy(null)
     }
   }
 
-  async function unpay(b: Bill) {
-    setBusy(b.id)
-    try {
-      await fetch('/api/bills/paid', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rowIndex: parseInt(b.id), cycle: CYCLE, paid: false }),
-      })
-      await fetchData()
-    } finally {
-      setBusy(null)
-    }
+  async function confirmPay(b: Bill, cycle: string) {
+    const amt = parseFloat(payAmount.replace(/,/g, ''))
+    if (!amt || amt <= 0) return
+    await setPaid(b, cycle, true, amt, payAccount)
+  }
+
+  // กดวงกลม/ชิปของบิลรายเดือน-รายปี: จ่ายแล้ว -> ยกเลิกตรงๆ, ยังไม่จ่าย+รายเดือน -> เปิดช่องยืนยันยอด, ยังไม่จ่าย+รายปี -> ติ๊กตรงๆ (ไม่มียอดให้ยืนยัน)
+  function handleCycleClick(b: Bill, cycle: string, isPaid: boolean) {
+    if (isPaid) return setPaid(b, cycle, false)
+    if (b.type === 'yearly') return setPaid(b, cycle, true)
+    const key = payingKeyOf(b.id, cycle)
+    return payingKey === key ? setPayingKey(null) : openPay(b, cycle)
   }
 
   async function toggleDone(b: Bill) {
@@ -166,12 +186,12 @@ export default function BillsPage() {
     }
   }
 
-  // ยอดกันไว้รวมต่อเดือน (สำหรับ header)
+  // ยอดกันไว้รวมต่อเดือน (สำหรับ header) — รายเดือนที่ค้างทั้งเดือนที่แล้ว+เดือนนี้ นับกันไว้ 2 เท่า
   const curMonthNo = new Date().getMonth() + 1
   const monthlyReserve = bills.reduce((s, b) => {
     if (b.type === 'yearly') return s + b.amount / (((b.dueMonth - curMonthNo - 1 + 12) % 12) + 1)
     if (b.type === 'once') return b.done ? s : s + b.amount / Math.max(1, b.months || 1)
-    return b.paidCycles.includes(CYCLE) ? s : s + b.amount
+    return s + billCycleEntries(b, CYCLE, PREV_CYCLE, NEXT_CYCLE).reduce((sum, e) => sum + e.amount, 0)
   }, 0)
 
   const order: Record<BillType, number> = { monthly: 0, yearly: 1, once: 2 }
@@ -345,9 +365,7 @@ export default function BillsPage() {
         ) : (
           <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
             {sorted.map((b) => {
-              const paid = b.type === 'monthly' && b.paidCycles.includes(CYCLE)
               const done = b.type === 'once' && b.done
-              const dim = paid || done
               const curMonth = new Date().getMonth() + 1
               const monthsLeft = ((b.dueMonth - curMonth - 1 + 12) % 12) + 1
               const yearlyPerMonth = b.amount / monthsLeft
@@ -355,41 +373,60 @@ export default function BillsPage() {
               const oncePerMonth = b.amount / onceMonths
               const perMonthCol = b.type === 'yearly' ? yearlyPerMonth : b.type === 'once' && onceMonths > 1 ? oncePerMonth : b.amount
               const showPerMonth = b.type === 'yearly' || (b.type === 'once' && onceMonths > 1)
+
+              // รายเดือน/รายปี: รอบที่ยังค้างติ๊ก (เดือนที่แล้ว + เดือนนี้ แยกกันคนละปุ่ม) — ถ้าติ๊กครบถือว่ากำลังกันไว้ล่วงหน้า
+              const cycleEntries: CycleEntry[] =
+                b.type === 'monthly' || b.type === 'yearly' ? billCycleEntries(b, CYCLE, PREV_CYCLE, NEXT_CYCLE) : []
+              const outstanding = cycleEntries.filter((e) => e.status !== 'ahead')
+              const caughtUp = b.type !== 'once' && outstanding.length === 0
+              const singleCycle = outstanding.length === 1 ? outstanding[0].cycle : CYCLE
+              const singleKey = payingKeyOf(b.id, singleCycle)
+              const strike = done // เส้นขีดฆ่าเฉพาะ "เก็บก้อน" ที่ใช้ครบแล้วจริงๆ — รายเดือน/รายปี ยังวนทุกเดือนไม่ถือว่า "จบ"
+              const dim = done || caughtUp
+              const payingCycleForThisBill = payingKey?.startsWith(`${b.id}:`) ? payingKey.slice(b.id.length + 1) : null
+
               return (
                 <div key={b.id}>
                   <div className="flex items-center px-4 py-3">
-                    {b.type === 'yearly' ? (
-                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 bg-slate-100 text-slate-500">
-                        📅
-                      </span>
-                    ) : (
+                    {b.type === 'once' ? (
                       <button
-                        onClick={() => {
-                          if (b.type === 'once') return toggleDone(b)
-                          if (paid) return unpay(b)
-                          return payingId === b.id ? setPayingId(null) : openPay(b)
-                        }}
+                        onClick={() => toggleDone(b)}
                         disabled={busy === b.id}
                         className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 border-2 ${
-                          dim
-                            ? 'bg-green-100 border-green-400 text-green-600'
-                            : payingId === b.id
-                              ? 'bg-blue-100 border-blue-400 text-blue-600'
-                              : 'bg-gray-50 border-gray-200 text-gray-300'
+                          dim ? 'bg-green-100 border-green-400 text-green-600' : 'bg-gray-50 border-gray-200 text-gray-300'
                         }`}
                         aria-label="สลับสถานะ"
                       >
                         {busy === b.id ? '⏳' : dim ? '✓' : '○'}
                       </button>
+                    ) : outstanding.length > 1 ? (
+                      <span className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold mr-3 flex-shrink-0 bg-red-100 text-red-500">
+                        ค้าง {outstanding.length}
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handleCycleClick(b, singleCycle, caughtUp)}
+                        disabled={busy === singleKey}
+                        className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 border-2 ${
+                          dim
+                            ? 'bg-green-100 border-green-400 text-green-600'
+                            : payingKey === singleKey
+                              ? 'bg-blue-100 border-blue-400 text-blue-600'
+                              : 'bg-gray-50 border-gray-200 text-gray-300'
+                        }`}
+                        aria-label="สลับสถานะ"
+                      >
+                        {busy === singleKey ? '⏳' : dim ? '✓' : '○'}
+                      </button>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className={`font-medium text-sm truncate ${dim ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                      <p className={`font-medium text-sm truncate ${strike ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
                         {b.name}
                       </p>
                       <p className="text-gray-400 text-xs truncate">
-                        {b.type === 'monthly' && `รายเดือน · ครบกำหนดวันที่ ${b.dueDay}`}
+                        {b.type === 'monthly' && `รายเดือน · ครบกำหนดวันที่ ${b.dueDay}${caughtUp ? ' · จ่ายแล้ว' : ''}`}
                         {b.type === 'yearly' &&
-                          `รายปี ฿${fmt(b.amount)} · จ่าย ${THAI_MONTHS_SHORT[b.dueMonth - 1]} · อีก ${monthsLeft} เดือน`}
+                          `รายปี ฿${fmt(b.amount)} · จ่าย ${THAI_MONTHS_SHORT[b.dueMonth - 1]} · อีก ${monthsLeft} เดือน${caughtUp ? ' · เก็บเดือนนี้แล้ว ✓' : ''}`}
                         {b.type === 'once' &&
                           (done
                             ? 'เก็บก้อน · ใช้แล้ว'
@@ -399,6 +436,30 @@ export default function BillsPage() {
                         {` · ${PAYMENT_METHOD_LABELS[b.account] ?? b.account}`}
                         {b.note ? ` · ${b.note}` : ''}
                       </p>
+                      {outstanding.length > 1 && (
+                        <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                          {outstanding.map((e) => {
+                            const key = payingKeyOf(b.id, e.cycle)
+                            return (
+                              <button
+                                key={e.cycle}
+                                onClick={() => handleCycleClick(b, e.cycle, false)}
+                                disabled={busy === key}
+                                className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all ${
+                                  payingKey === key
+                                    ? 'bg-blue-100 border-blue-400 text-blue-600'
+                                    : e.status === 'overdue'
+                                      ? 'bg-red-50 border-red-300 text-red-600'
+                                      : 'bg-gray-50 border-gray-200 text-gray-500'
+                                }`}
+                              >
+                                {busy === key ? '⏳ ' : e.status === 'overdue' ? '⚠ ' : '○ '}
+                                {cycleLabel(e.cycle)}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                     <p className="font-semibold text-gray-700 text-sm mr-2 flex-shrink-0 text-right">
                       ฿{fmt(perMonthCol)}
@@ -412,9 +473,11 @@ export default function BillsPage() {
                     </button>
                   </div>
 
-                  {payingId === b.id && (
+                  {payingCycleForThisBill && (
                     <div className="px-4 pb-3 pt-1 bg-blue-50 border-t border-blue-100 space-y-2.5">
-                      <p className="text-[11px] text-blue-500">ยืนยันยอดที่จ่ายจริง (ที่กันไว้เป็นแค่ยอดเผื่อ แก้ได้ถ้าเดือนนี้ไม่เท่าเดิม)</p>
+                      <p className="text-[11px] text-blue-500">
+                        ยืนยันยอดที่จ่ายจริงของ{cycleLabel(payingCycleForThisBill)} (ที่กันไว้เป็นแค่ยอดเผื่อ แก้ได้ถ้าไม่เท่าเดิม)
+                      </p>
                       <div className="flex items-center gap-2">
                         <span className="text-xs text-blue-500 w-16 flex-shrink-0">ยอดจ่าย ฿</span>
                         <input
@@ -443,15 +506,15 @@ export default function BillsPage() {
                         </div>
                       </div>
                       <div className="flex gap-2 justify-end">
-                        <button onClick={() => setPayingId(null)} className="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg">
+                        <button onClick={() => setPayingKey(null)} className="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg">
                           ยกเลิก
                         </button>
                         <button
-                          onClick={() => confirmPay(b)}
-                          disabled={busy === b.id}
+                          onClick={() => confirmPay(b, payingCycleForThisBill)}
+                          disabled={busy === payingKeyOf(b.id, payingCycleForThisBill)}
                           className="px-4 py-1 bg-green-600 text-white text-xs rounded-lg font-semibold disabled:opacity-50"
                         >
-                          {busy === b.id ? 'กำลังบันทึก...' : 'ยืนยันจ่ายแล้ว'}
+                          {busy === payingKeyOf(b.id, payingCycleForThisBill) ? 'กำลังบันทึก...' : 'ยืนยันจ่ายแล้ว'}
                         </button>
                       </div>
                     </div>
@@ -463,10 +526,12 @@ export default function BillsPage() {
         )}
 
         <p className="text-xs text-gray-400 px-1 leading-relaxed">
-          <b>รายเดือน</b>: กด ○→✓ เมื่อจ่ายบิลรอบเดือนนี้แล้ว — ระบบจะ<b>บันทึกรายจ่ายให้อัตโนมัติ</b>
+          <b>รายเดือน</b>: กด ○→✓ เมื่อจ่ายบิลรอบนั้นแล้ว — ระบบจะ<b>บันทึกรายจ่ายให้อัตโนมัติ</b>
           (หมวด &quot;ชำระบิล&quot;) แล้วเริ่มกันเงินไว้จ่ายบิลเดือนหน้าต่อทันที <b>ไม่ต้องไปบันทึกรายจ่ายซ้ำเองอีก</b> &nbsp;·&nbsp;
-          <b>รายปี</b>: เฉลี่ยยอดต่อปี ÷ เดือนที่เหลือถึงเดือนจ่าย &nbsp;·&nbsp;
+          <b>รายปี</b>: เฉลี่ยยอดต่อปี ÷ เดือนที่เหลือถึงเดือนจ่าย และมีปุ่มติ๊ก &quot;เก็บเดือนนี้แล้ว&quot; เป็นเช็กลิสต์ (ไม่บันทึกรายจ่าย) &nbsp;·&nbsp;
           <b>เก็บก้อน</b>: เฉลี่ยตาม &quot;เก็บกี่เดือน&quot; · กด ○→✓ เมื่อใช้เงินก้อนแล้ว
+          <br />
+          ถ้าลืมติ๊กเดือนที่แล้ว จะมีปุ่มแยก <b>&quot;เดือนที่แล้ว&quot; กับ &quot;เดือนนี้&quot;</b> ให้ติ๊กทีละเดือน ไม่รวมเป็นก้อนเดียว
           <br />
           การ์ด &quot;ใช้ได้วันละ&quot; บนหน้าแรกจะคิดใหม่ให้อัตโนมัติ · ดูรายจ่ายที่บันทึกแล้วได้ที่หน้า &quot;รายจ่าย&quot; ในเมนูซื้อของ
         </p>

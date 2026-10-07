@@ -1,11 +1,13 @@
 import { Bill, Transaction } from './types'
 import { computeCurrentBalances } from './balances'
+import { billCycleEntries, cyclesOf } from './billCycles'
 
 export interface OutstandingBill {
   name: string
   amount: number
   due: string // yyyy-MM-dd
   cycle: string // yyyy-MM
+  status: 'overdue' | 'due' | 'ahead'
 }
 
 export interface SavingsItem {
@@ -29,9 +31,10 @@ export interface DailyBudget {
   horizon: string // yyyy-MM-dd วันสิ้นสุดที่ใช้หาร (เสมอวันสุดท้ายของเดือนนี้)
   avgIngredient: number
   spentIngredientThisMonth: number
-  monthlyOutstanding: OutstandingBill[] // รวมทั้งสองกลุ่มด้านล่าง (ไว้เผื่อใช้เดิม)
+  monthlyOutstanding: OutstandingBill[] // รวมทั้งสามกลุ่มด้านล่าง (ไว้เผื่อใช้เดิม)
+  billsOverdue: OutstandingBill[] // ค้างจ่ายเดือนที่แล้ว ยังไม่ได้ติ๊ก
   billsDueThisMonth: OutstandingBill[] // ยังไม่จ่าย ครบกำหนดเดือนนี้ — ค้างอยู่
-  billsSavingAhead: OutstandingBill[] // จ่ายเดือนนี้แล้ว กำลังกันไว้ล่วงหน้าสำหรับเดือนหน้า
+  billsSavingAhead: OutstandingBill[] // จ่ายครบ (เดือนที่แล้ว+เดือนนี้) แล้ว กำลังกันไว้ล่วงหน้าสำหรับเดือนหน้า
   savingsItems: SavingsItem[]
 }
 
@@ -57,8 +60,7 @@ export function computeDailyBudget(
 
   const y = today.getFullYear()
   const mo = today.getMonth() // 0-based
-  const thisCycle = `${y}-${String(mo + 1).padStart(2, '0')}`
-  const nextCycle = `${mo === 11 ? y + 1 : y}-${String(((mo + 1) % 12) + 1).padStart(2, '0')}`
+  const { thisCycle, prevCycle, nextCycle } = cyclesOf(today)
 
   // ---- งบวัตถุดิบร้าน: เฉลี่ยจากเดือนก่อนๆ − ที่ซื้อไปแล้วเดือนนี้ ----
   const rawByMonth = new Map<string, number>()
@@ -96,17 +98,16 @@ export function computeDailyBudget(
         savingsItems.push({ name: b.name, monthly: b.amount / months, kind: 'once', total: b.amount, months })
       continue
     }
-    // monthly: ยังไม่จ่ายเดือนนี้ -> ค้างอยู่ (กันยอดเดือนนี้) ; จ่ายเดือนนี้แล้ว -> เริ่มกันไว้ล่วงหน้าสำหรับเดือนหน้า
-    // ทำแบบนี้เพื่อให้ "เก็บเงินเดือนนี้ไว้จ่ายบิลเดือนหน้า" ต่อเนื่องกันไปเรื่อยๆ ไม่มีช่วงที่ไม่ได้กันเงินเลย
-    if (!b.paidCycles.includes(thisCycle)) {
-      monthlyOutstanding.push({ name: b.name, amount: b.amount, due: clampDueDate(thisCycle, b.dueDay), cycle: thisCycle })
-    } else if (!b.paidCycles.includes(nextCycle)) {
-      monthlyOutstanding.push({ name: b.name, amount: b.amount, due: clampDueDate(nextCycle, b.dueDay), cycle: nextCycle })
+    // monthly: เดือนที่แล้ว + เดือนนี้ ที่ยังไม่ติ๊ก นับเป็นค้างแยกกันคนละรายการ (ไม่รวมเป็นก้อนเดียว)
+    // ถ้าติ๊กครบทั้งคู่แล้ว ถือว่ากำลังกันไว้ล่วงหน้าสำหรับเดือนหน้า ต่อเนื่องไปเรื่อยๆ ไม่มีช่วงที่ไม่ได้กันเงินเลย
+    for (const e of billCycleEntries(b, thisCycle, prevCycle, nextCycle)) {
+      monthlyOutstanding.push({ name: b.name, amount: e.amount, due: clampDueDate(e.cycle, b.dueDay), cycle: e.cycle, status: e.status })
     }
   }
 
-  const billsDueThisMonth = monthlyOutstanding.filter((b) => b.cycle === thisCycle)
-  const billsSavingAhead = monthlyOutstanding.filter((b) => b.cycle !== thisCycle)
+  const billsOverdue = monthlyOutstanding.filter((b) => b.status === 'overdue')
+  const billsDueThisMonth = monthlyOutstanding.filter((b) => b.status === 'due')
+  const billsSavingAhead = monthlyOutstanding.filter((b) => b.status === 'ahead')
   const monthlyBillsDue = monthlyOutstanding.reduce((s, b) => s + b.amount, 0)
   const savingsReserve = savingsItems.reduce((s, x) => s + x.monthly, 0)
 
@@ -130,6 +131,7 @@ export function computeDailyBudget(
     avgIngredient,
     spentIngredientThisMonth,
     monthlyOutstanding,
+    billsOverdue,
     billsDueThisMonth,
     billsSavingAhead,
     savingsItems,
