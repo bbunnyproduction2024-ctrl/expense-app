@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Bill, Transaction, THAI_MONTHS_SHORT } from '@/lib/types'
 import { yearlyRealSavedInWindow } from '@/lib/billCycles'
+import { computeCurrentBalances } from '@/lib/balances'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -38,15 +39,24 @@ export default function SavingsPage() {
     .sort((a, b) => a.bill.dueMonth - b.bill.dueMonth)
 
   const totalSaved = items.reduce((s, i) => s + i.saved, 0)
+  const realBalance = computeCurrentBalances(transactions).saving
 
   return (
     <div className="min-h-full bg-[#f7ede4] overflow-x-hidden pb-24">
       <div className="px-4 pt-12 pb-6 bg-slate-700 text-white">
         <h1 className="text-2xl font-bold">🐷 ออมทรัพย์</h1>
-        <p className="text-sm opacity-75 mt-1">ยอดสะสมเพื่อบิลรายปี รวม ~฿{fmt(totalSaved)}</p>
+        <p className="text-3xl font-bold mt-2">฿{fmt(realBalance)}</p>
+        <p className="text-xs opacity-60 mt-0.5">ยอดจริงในบัญชีตอนนี้</p>
       </div>
 
       <div className="px-4 py-4 space-y-3">
+        <div className="bg-white rounded-2xl p-4 shadow-sm">
+          <p className="text-sm font-semibold text-gray-600">ยอดสะสมเพื่อบิลรายปี (รวมที่เติมเองด้วย)</p>
+          <p className="text-2xl font-bold text-pink-600 mt-0.5">฿{fmt(totalSaved)}</p>
+          <p className="text-[11px] text-gray-400 mt-1">
+            ตัวเลขนี้นับยอดที่เคยเติมเองไว้ก่อนหน้า (ไม่ใช่เงินจริง) รวมกับที่โอนเข้าจริงแล้ว — ไม่ใช่ยอดเงินจริงในบัญชี ดูยอดจริงด้านบนแทน
+          </p>
+        </div>
         {loading ? (
           <div className="text-center py-8 text-gray-400">กำลังโหลด...</div>
         ) : items.length === 0 ? (
