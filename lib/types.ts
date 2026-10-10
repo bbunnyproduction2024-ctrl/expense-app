@@ -112,6 +112,7 @@ export interface Bill {
   type: BillType
   paidCycles: string[]  // รอบ "yyyy-MM" ที่กดจ่ายแล้ว (monthly)
   done: boolean         // เก็บครบ/ใช้แล้ว (once)
+  savedCredit: number   // yearly เท่านั้น — ยอดที่เก็บไว้ก่อนหน้าแล้ว (นอกระบบ ไม่มีธุรกรรมจริง) หักออกจากยอดที่ต้องเก็บต่อเดือนที่เหลือ รีเซ็ตเป็น 0 ทุกครั้งที่จ่ายบิลจริงตอนครบกำหนด
 }
 
 export interface BillInput {

@@ -87,7 +87,9 @@ export function computeDailyBudget(
       const dm = Math.min(12, Math.max(1, b.dueMonth || 1))
       // จำนวนเดือนจากตอนนี้ถึงเดือนที่ต้องจ่าย (1-12); ถ้าอยู่ในเดือนที่จ่ายพอดี = 12 (เก็บสำหรับปีหน้า)
       const monthsUntilDue = ((dm - curMonth - 1 + 12) % 12) + 1
-      const monthly = b.amount / monthsUntilDue
+      // หักยอดที่เคยเก็บไว้ก่อนหน้า (savedCredit, นอกระบบ) ออกจากยอดที่ยังต้องเก็บ ก่อนหารเฉลี่ยต่อเดือน
+      const remaining = Math.max(0, b.amount - (b.savedCredit || 0))
+      const monthly = remaining / monthsUntilDue
       // ถ้าเดือนนี้โอนเก็บ/จ่ายไปจริงแล้ว (thisCycle อยู่ใน paidCycles) เงินก็หักออกจาก spendable ไปแล้วจริงๆ
       // ไม่ต้องกันสำรองซ้อนอีกชั้นในตัวเลขคาดการณ์นี้
       if (monthly > 0 && !b.paidCycles.includes(thisCycle))

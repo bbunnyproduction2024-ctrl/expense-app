@@ -31,11 +31,12 @@ function billPayMode(b: Bill, cycle: string): 'expense' | 'transfer' {
   return 'expense'
 }
 
-// ยอดเก็บต่อเดือนของบิลรายปี = ยอดต่อปี ÷ จำนวนเดือนที่เหลือถึงกำหนด (นับจากวันนี้)
+// ยอดเก็บต่อเดือนของบิลรายปี = (ยอดต่อปี − ยอดที่เคยเก็บไว้ก่อนหน้า) ÷ จำนวนเดือนที่เหลือถึงกำหนด (นับจากวันนี้)
 function yearlyMonthlyAmount(b: Bill): number {
   const curMonth = new Date().getMonth() + 1
   const monthsLeft = ((b.dueMonth - curMonth - 1 + 12) % 12) + 1
-  return b.amount / monthsLeft
+  const remaining = Math.max(0, b.amount - (b.savedCredit || 0))
+  return remaining / monthsLeft
 }
 
 // ค่าเริ่มต้นวันที่จ่าย = วันนี้เสมอ ไม่ว่าจะจ่ายรอบไหน — เงินออกจากบัญชีจริงวันที่กดจ่าย
@@ -58,6 +59,7 @@ export default function BillsPage() {
   const [months, setMonths] = useState('1')
   const [account, setAccount] = useState<PaymentMethod>('KBank')
   const [note, setNote] = useState('')
+  const [savedCredit, setSavedCredit] = useState('0')
 
   // ยืนยันก่อนจ่าย: แก้ยอดจริง + เลือกบัญชีที่จ่ายได้ (ที่กันไว้เป็นแค่ยอดเผื่อ แต่ละเดือนไม่เท่ากัน)
   // คีย์ด้วย "billId:cycle" เพราะบิลเดียวอาจค้างได้หลายเดือน (เดือนที่แล้ว + เดือนนี้) พร้อมกัน
@@ -89,6 +91,7 @@ export default function BillsPage() {
     setMonths('1')
     setAccount('KBank')
     setNote('')
+    setSavedCredit('0')
   }
   function startEdit(b: Bill) {
     setPayingKey(null)
@@ -101,6 +104,7 @@ export default function BillsPage() {
     setMonths(String(b.months || 1))
     setAccount(b.account)
     setNote(b.note)
+    setSavedCredit(String(b.savedCredit || 0))
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -109,11 +113,22 @@ export default function BillsPage() {
     const day = parseInt(dueDay) || 1
     const dmonth = parseInt(dueMonth) || 1
     const mths = Math.max(1, parseInt(months) || 1)
+    const credit = Math.max(0, parseFloat(savedCredit.replace(/,/g, '')) || 0)
     if (!name.trim() || !amt || amt <= 0) return
     if (type === 'monthly' && (day < 1 || day > 31)) return
     setBusy('save')
     try {
-      const payload = { name: name.trim(), amount: amt, dueDay: day, dueMonth: dmonth, months: mths, account, note: note.trim(), type }
+      const payload = {
+        name: name.trim(),
+        amount: amt,
+        dueDay: day,
+        dueMonth: dmonth,
+        months: mths,
+        account,
+        note: note.trim(),
+        type,
+        ...(type === 'yearly' ? { savedCredit: credit } : {}),
+      }
       if (editId) {
         await fetch('/api/bills/update', {
           method: 'POST',
@@ -220,9 +235,8 @@ export default function BillsPage() {
   }
 
   // ยอดกันไว้รวมต่อเดือน (สำหรับ header) — รายเดือนที่ค้างทั้งเดือนที่แล้ว+เดือนนี้ นับกันไว้ 2 เท่า
-  const curMonthNo = new Date().getMonth() + 1
   const monthlyReserve = bills.reduce((s, b) => {
-    if (b.type === 'yearly') return s + b.amount / (((b.dueMonth - curMonthNo - 1 + 12) % 12) + 1)
+    if (b.type === 'yearly') return s + yearlyMonthlyAmount(b)
     if (b.type === 'once') return b.done ? s : s + b.amount / Math.max(1, b.months || 1)
     return s + billCycleEntries(b, CYCLE, PREV_CYCLE, NEXT_CYCLE).reduce((sum, e) => sum + e.amount, 0)
   }, 0)
@@ -330,14 +344,30 @@ export default function BillsPage() {
               </div>
             )}
           </div>
+          {type === 'yearly' && (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">ยอดที่เคยเก็บไว้ก่อนหน้า (ไม่บังคับ ไม่หักเงินจริง)</label>
+              <input
+                type="number"
+                inputMode="decimal"
+                placeholder="0"
+                value={savedCredit}
+                onChange={(e) => setSavedCredit(e.target.value)}
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
+              />
+            </div>
+          )}
           {type === 'yearly' && amount && (() => {
             const cur = new Date().getMonth() + 1
             const dm = parseInt(dueMonth) || 1
             const monthsLeft = ((dm - cur - 1 + 12) % 12) + 1
             const annual = parseFloat(amount.replace(/,/g, '')) || 0
+            const credit = Math.max(0, parseFloat(savedCredit.replace(/,/g, '')) || 0)
+            const remaining = Math.max(0, annual - credit)
             return (
               <p className="text-[11px] text-slate-500">
-                จ่าย {THAI_MONTHS_SHORT[dm - 1]} · อีก {monthsLeft} เดือน → กันไว้เดือนละ ฿{fmt(annual / monthsLeft)}
+                จ่าย {THAI_MONTHS_SHORT[dm - 1]} · อีก {monthsLeft} เดือน
+                {credit > 0 && ` · เก็บไว้แล้ว ฿${fmt(credit)}`} → กันไว้เดือนละ ฿{fmt(remaining / monthsLeft)}
               </p>
             )
           })()}

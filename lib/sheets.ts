@@ -256,7 +256,7 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
 
 // ---- บิลประจำ / เงินกันไว้ (Bills) ----
 // A=ID | B=Name | C=Amount | D=DueDay | E=Account | F=Note | G=PaidCycles | H=Type | I=Done | J=DueMonth | K=Months
-const BILLS_HEADER = ['ID', 'Name', 'Amount', 'DueDay', 'Account', 'Note', 'PaidCycles', 'Type', 'Done', 'DueMonth', 'Months']
+const BILLS_HEADER = ['ID', 'Name', 'Amount', 'DueDay', 'Account', 'Note', 'PaidCycles', 'Type', 'Done', 'DueMonth', 'Months', 'SavedCredit']
 
 export async function ensureBillsSheet(): Promise<void> {
   const sheets = getSheets()
@@ -281,7 +281,7 @@ export async function getBills(): Promise<Bill[]> {
   await ensureBillsSheet()
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${BILLS_SHEET}!A2:K`,
+    range: `${BILLS_SHEET}!A2:L`,
   })
   return (res.data.values ?? [])
     .map((row, i) => {
@@ -299,6 +299,7 @@ export async function getBills(): Promise<Bill[]> {
         paidCycles: String(row[6] ?? '').split(/[\s,]+/).filter(Boolean),
         type,
         done: /^(true|1|yes)$/i.test(String(row[8] ?? '').trim()),
+        savedCredit: Number(row[11]) || 0,
       }
     })
     .filter((b) => b.name)
@@ -333,6 +334,7 @@ export async function updateBill(
     note?: string
     type?: string
     done?: boolean
+    savedCredit?: number
   }
 ): Promise<void> {
   const sheets = getSheets()
@@ -352,6 +354,7 @@ export async function updateBill(
   if (fields.note !== undefined) await set('F', fields.note)
   if (fields.type !== undefined) await set('H', fields.type)
   if (fields.done !== undefined) await set('I', fields.done ? 'TRUE' : '')
+  if (fields.savedCredit !== undefined) await set('L', fields.savedCredit)
 }
 
 // เปิด/ปิดสถานะ "เก็บครบ/ใช้แล้ว" ของเงินก้อน (type = once)
@@ -431,6 +434,13 @@ export async function setBillPaid(
           amount,
           paymentMethod: account,
           note: `ชำระบิล ${name} ${tag}`,
+        })
+        // จ่ายบิลรายปีจริงตอนครบกำหนดแล้ว -> รีเซ็ตยอดที่เคยเก็บไว้ก่อนหน้า (savedCredit) กลับเป็น 0 เริ่มรอบปีถัดไปใหม่
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `${BILLS_SHEET}!L${rowIndex}`,
+          valueInputOption: 'RAW',
+          requestBody: { values: [[0]] },
         })
       }
     }
