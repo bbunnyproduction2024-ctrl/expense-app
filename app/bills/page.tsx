@@ -23,6 +23,16 @@ function payingKeyOf(billId: string, cycle: string) {
   return `${billId}:${cycle}`
 }
 
+// ค่าเริ่มต้นวันที่จ่าย: รอบเดือนนี้ใช้วันนี้จริง / รอบที่ค้างมาจากเดือนก่อนให้ลงวันครบกำหนดของเดือนนั้นแทน
+// (ไม่ใช้วันนี้) เพื่อให้รายจ่ายไปนับอยู่ในบัญชีของเดือนที่ค้างจริง เหมือนจ่ายตรงเวลาปกติ — แก้เองได้ในฟอร์ม
+function defaultPayDate(b: Bill, cycle: string): string {
+  if (cycle === CYCLE) return new Date().toISOString().slice(0, 10)
+  const [y, m] = cycle.split('-').map(Number)
+  const last = new Date(y, m, 0).getDate()
+  const day = Math.min(Math.max(1, b.dueDay || 1), last)
+  return `${cycle}-${String(day).padStart(2, '0')}`
+}
+
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,6 +53,7 @@ export default function BillsPage() {
   const [payingKey, setPayingKey] = useState<string | null>(null)
   const [payAmount, setPayAmount] = useState('')
   const [payAccount, setPayAccount] = useState<PaymentMethod>('KBank')
+  const [payDate, setPayDate] = useState('')
 
   async function fetchData() {
     setLoading(true)
@@ -116,10 +127,18 @@ export default function BillsPage() {
     setPayingKey(payingKeyOf(b.id, cycle))
     setPayAmount(String(b.amount))
     setPayAccount(b.account)
+    setPayDate(defaultPayDate(b, cycle))
   }
 
   // รายเดือน = จ่ายจริง บันทึกรายจ่ายอัตโนมัติ · รายปี = แค่เช็กลิสต์ "เก็บเดือนนี้แล้ว" ไม่บันทึกรายจ่าย
-  async function setPaid(b: Bill, cycle: string, paid: boolean, overrideAmount?: number, overrideAccount?: string) {
+  async function setPaid(
+    b: Bill,
+    cycle: string,
+    paid: boolean,
+    overrideAmount?: number,
+    overrideAccount?: string,
+    overrideDate?: string
+  ) {
     const key = payingKeyOf(b.id, cycle)
     setBusy(key)
     try {
@@ -132,6 +151,7 @@ export default function BillsPage() {
           paid,
           amount: overrideAmount,
           account: overrideAccount,
+          date: overrideDate,
           recordExpense: b.type !== 'yearly',
         }),
       })
@@ -145,7 +165,7 @@ export default function BillsPage() {
   async function confirmPay(b: Bill, cycle: string) {
     const amt = parseFloat(payAmount.replace(/,/g, ''))
     if (!amt || amt <= 0) return
-    await setPaid(b, cycle, true, amt, payAccount)
+    await setPaid(b, cycle, true, amt, payAccount, payDate || undefined)
   }
 
   // กดวงกลม/ชิปของบิลรายเดือน-รายปี: จ่ายแล้ว -> ยกเลิกตรงๆ, ยังไม่จ่าย+รายเดือน -> เปิดช่องยืนยันยอด, ยังไม่จ่าย+รายปี -> ติ๊กตรงๆ (ไม่มียอดให้ยืนยัน)
@@ -486,6 +506,16 @@ export default function BillsPage() {
                           value={payAmount}
                           onChange={(e) => setPayAmount(e.target.value)}
                           className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-blue-500 w-16 flex-shrink-0">วันที่จ่าย</span>
+                        <input
+                          type="date"
+                          value={payDate}
+                          onChange={(e) => setPayDate(e.target.value)}
+                          onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
+                          className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white cursor-pointer"
                         />
                       </div>
                       <div>
