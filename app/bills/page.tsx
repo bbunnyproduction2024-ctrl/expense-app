@@ -23,6 +23,12 @@ function payingKeyOf(billId: string, cycle: string) {
   return `${billId}:${cycle}`
 }
 
+// บิลรายปี: เดือนที่ตรงกับเดือนครบกำหนดจริงของบิลนั้น ถือเป็นการจ่ายเงินจริง (ต้องเลือกช่องทาง/บันทึกรายจ่าย)
+// ส่วนเดือนอื่นๆที่ติ๊กไว้ล่วงหน้าเป็นแค่เช็กลิสต์ "เก็บเงินไว้แล้ว" ไม่มีเงินเข้าออกจริง
+function yearlyNeedsPayment(b: Bill, cycle: string): boolean {
+  return b.type === 'yearly' && Number(cycle.split('-')[1]) === b.dueMonth
+}
+
 // ค่าเริ่มต้นวันที่จ่าย: รอบเดือนนี้ใช้วันนี้จริง / รอบที่ค้างมาจากเดือนก่อนให้ลงวันครบกำหนดของเดือนนั้นแทน
 // (ไม่ใช้วันนี้) เพื่อให้รายจ่ายไปนับอยู่ในบัญชีของเดือนที่ค้างจริง เหมือนจ่ายตรงเวลาปกติ — แก้เองได้ในฟอร์ม
 function defaultPayDate(b: Bill, cycle: string): string {
@@ -130,7 +136,8 @@ export default function BillsPage() {
     setPayDate(defaultPayDate(b, cycle))
   }
 
-  // รายเดือน = จ่ายจริง บันทึกรายจ่ายอัตโนมัติ · รายปี = แค่เช็กลิสต์ "เก็บเดือนนี้แล้ว" ไม่บันทึกรายจ่าย
+  // รายเดือน = จ่ายจริง บันทึกรายจ่ายอัตโนมัติเสมอ
+  // รายปี = เดือนที่ครบกำหนดจริงก็บันทึกรายจ่ายจริงเหมือนกัน ส่วนเดือนอื่นเป็นแค่เช็กลิสต์ "เก็บเดือนนี้แล้ว" ไม่บันทึกรายจ่าย
   async function setPaid(
     b: Bill,
     cycle: string,
@@ -152,7 +159,7 @@ export default function BillsPage() {
           amount: overrideAmount,
           account: overrideAccount,
           date: overrideDate,
-          recordExpense: b.type !== 'yearly',
+          recordExpense: b.type === 'monthly' || yearlyNeedsPayment(b, cycle),
         }),
       })
       setPayingKey(null)
@@ -168,10 +175,12 @@ export default function BillsPage() {
     await setPaid(b, cycle, true, amt, payAccount, payDate || undefined)
   }
 
-  // กดวงกลม/ชิปของบิลรายเดือน-รายปี: จ่ายแล้ว -> ยกเลิกตรงๆ, ยังไม่จ่าย+รายเดือน -> เปิดช่องยืนยันยอด, ยังไม่จ่าย+รายปี -> ติ๊กตรงๆ (ไม่มียอดให้ยืนยัน)
+  // กดวงกลม/ชิปของบิลรายเดือน-รายปี: จ่ายแล้ว -> ยกเลิกตรงๆ
+  // ยังไม่จ่าย+รายเดือน หรือ รายปีเดือนที่ครบกำหนดจริง -> เปิดช่องยืนยันยอด/ช่องทางจ่าย
+  // ยังไม่จ่าย+รายปีเดือนอื่น -> ติ๊กตรงๆ (แค่เช็กลิสต์ ไม่มีเงินจริง ไม่ต้องเลือกช่องทาง)
   function handleCycleClick(b: Bill, cycle: string, isPaid: boolean) {
     if (isPaid) return setPaid(b, cycle, false)
-    if (b.type === 'yearly') return setPaid(b, cycle, true)
+    if (b.type === 'yearly' && !yearlyNeedsPayment(b, cycle)) return setPaid(b, cycle, true)
     const key = payingKeyOf(b.id, cycle)
     return payingKey === key ? setPayingKey(null) : openPay(b, cycle)
   }
