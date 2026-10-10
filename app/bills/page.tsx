@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Bill, BillType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, THAI_MONTHS_SHORT } from '@/lib/types'
-import { billCycleEntries, cyclesOf, CycleEntry } from '@/lib/billCycles'
+import { billCycleEntries, yearlyCycleEntries, cyclesOf, CycleEntry } from '@/lib/billCycles'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -405,7 +405,11 @@ export default function BillsPage() {
 
               // รายเดือน/รายปี: รอบที่ยังค้างติ๊ก (เดือนที่แล้ว + เดือนนี้ แยกกันคนละปุ่ม) — ถ้าติ๊กครบถือว่ากำลังกันไว้ล่วงหน้า
               const cycleEntries: CycleEntry[] =
-                b.type === 'monthly' || b.type === 'yearly' ? billCycleEntries(b, CYCLE, PREV_CYCLE, NEXT_CYCLE) : []
+                b.type === 'monthly'
+                  ? billCycleEntries(b, CYCLE, PREV_CYCLE, NEXT_CYCLE)
+                  : b.type === 'yearly'
+                    ? yearlyCycleEntries(b, new Date(), CYCLE, PREV_CYCLE, NEXT_CYCLE)
+                    : []
               const outstanding = cycleEntries.filter((e) => e.status !== 'ahead')
               const caughtUp = b.type !== 'once' && outstanding.length === 0
               const singleCycle = outstanding.length === 1 ? outstanding[0].cycle : CYCLE

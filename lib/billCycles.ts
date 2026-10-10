@@ -32,3 +32,28 @@ export function billCycleEntries(bill: Bill, thisCycle: string, prevCycle: strin
   }
   return out
 }
+
+// รอบครบกำหนดจริงล่าสุดของบิลรายปี (เดือน dueMonth ของปีนี้ ถ้าเลยมาแล้ว / ของปีที่แล้ว ถ้ายังไม่ถึง)
+function yearlyDueCycle(dueMonth: number, today: Date): string {
+  const curMonth = today.getMonth() + 1
+  const year = curMonth >= dueMonth ? today.getFullYear() : today.getFullYear() - 1
+  return `${year}-${pad(dueMonth)}`
+}
+
+// บิลรายปี: รอบเดือนที่แล้ว/เดือนนี้ ยังเป็นเช็กลิสต์เก็บเงินแบบเดิม (billCycleEntries)
+// แต่ถ้ารอบครบกำหนดจริง (ตาม dueMonth) ยังไม่จ่าย และหลุดนอกหน้าต่างเดือนที่แล้ว/เดือนนี้ไปแล้ว (ค้างมาเกิน 1 เดือน)
+// ให้ยังคงโผล่เป็นรายการค้างจ่ายจริงต่อไปจนกว่าจะติ๊ก ไม่ให้หายไปเฉยๆ
+export function yearlyCycleEntries(
+  bill: Bill,
+  today: Date,
+  thisCycle: string,
+  prevCycle: string,
+  nextCycle: string
+): CycleEntry[] {
+  const out = billCycleEntries(bill, thisCycle, prevCycle, nextCycle)
+  const dueCycle = yearlyDueCycle(bill.dueMonth, today)
+  if (!bill.paidCycles.includes(dueCycle) && !out.some((e) => e.cycle === dueCycle)) {
+    out.unshift({ cycle: dueCycle, amount: bill.amount, status: dueCycle === thisCycle ? 'due' : 'overdue' })
+  }
+  return out
+}
