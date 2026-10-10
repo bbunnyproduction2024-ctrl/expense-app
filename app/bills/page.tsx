@@ -29,14 +29,10 @@ function yearlyNeedsPayment(b: Bill, cycle: string): boolean {
   return b.type === 'yearly' && Number(cycle.split('-')[1]) === b.dueMonth
 }
 
-// ค่าเริ่มต้นวันที่จ่าย: รอบเดือนนี้ใช้วันนี้จริง / รอบที่ค้างมาจากเดือนก่อนให้ลงวันครบกำหนดของเดือนนั้นแทน
-// (ไม่ใช้วันนี้) เพื่อให้รายจ่ายไปนับอยู่ในบัญชีของเดือนที่ค้างจริง เหมือนจ่ายตรงเวลาปกติ — แก้เองได้ในฟอร์ม
-function defaultPayDate(b: Bill, cycle: string): string {
-  if (cycle === CYCLE) return new Date().toISOString().slice(0, 10)
-  const [y, m] = cycle.split('-').map(Number)
-  const last = new Date(y, m, 0).getDate()
-  const day = Math.min(Math.max(1, b.dueDay || 1), last)
-  return `${cycle}-${String(day).padStart(2, '0')}`
+// ค่าเริ่มต้นวันที่จ่าย = วันนี้เสมอ ไม่ว่าจะจ่ายรอบไหน — เงินออกจากบัญชีจริงวันที่กดจ่าย
+// ธนาคารไม่ย้อนลงวันที่ให้ ต่อให้เป็นการจ่ายบิลที่ค้างมาจากเดือนก่อนก็ตาม (cycle ใช้แค่ผูกว่าเป็นของรอบไหน) — แก้เองได้ในฟอร์มถ้าต้องการ
+function defaultPayDate(): string {
+  return new Date().toISOString().slice(0, 10)
 }
 
 export default function BillsPage() {
@@ -133,7 +129,7 @@ export default function BillsPage() {
     setPayingKey(payingKeyOf(b.id, cycle))
     setPayAmount(String(b.amount))
     setPayAccount(b.account)
-    setPayDate(defaultPayDate(b, cycle))
+    setPayDate(defaultPayDate())
   }
 
   // รายเดือน = จ่ายจริง บันทึกรายจ่ายอัตโนมัติเสมอ

@@ -383,18 +383,12 @@ async function deleteTxnsByTag(tag: string): Promise<void> {
   })
 }
 
-function clampDateInCycle(cycle: string, day: number): string {
-  const [y, m] = cycle.split('-').map(Number)
-  const last = new Date(y, m, 0).getDate()
-  return `${cycle}-${String(Math.min(Math.max(1, day), last)).padStart(2, '0')}`
-}
-
 // เปิด/ปิดสถานะ "จ่ายแล้ว" ของบิลในรอบ yyyy-MM
 // กดจ่ายแล้ว -> บันทึกรายจ่ายจริงให้อัตโนมัติ (หมวด "ชำระบิล") ผูกด้วย tag [B<row>:<cycle>]
 //   รับ overrideAmount/overrideAccount/overrideDate ได้ — เผื่อยอดจริงไม่เท่ากับที่กันไว้ จ่ายคนละบัญชี หรือวันที่ไม่ตรงที่กะไว้
 //   (ไม่แก้ยอด/บัญชีเริ่มต้นของบิลใน sheet — เป็นแค่ยอดที่จ่ายจริงครั้งนี้ครั้งเดียว)
-//   ถ้าไม่ระบุวันที่: รอบเดือนนี้ใช้วันนี้ตามจริง / รอบที่ค้างมาจากเดือนก่อนให้ลงวันที่ครบกำหนดของเดือนนั้นแทนวันนี้
-//   เพื่อให้รายจ่ายไปนับอยู่ในบัญชีของเดือนที่ค้างจริง ไม่ใช่เดือนปัจจุบัน — เหมือนจ่ายตรงเวลาปกติ
+//   ถ้าไม่ระบุวันที่: ใช้วันนี้ตามจริงเสมอ — เงินออกจากบัญชีจริงวันไหนก็ลงวันนั้น แม้จะเป็นการจ่ายตามหลังบิลที่ค้างมาจากเดือนก่อนก็ตาม
+//   (ธนาคารไม่ย้อนลงวันที่ให้; cycle ใช้แค่ผูกว่าเงินก้อนนี้จ่ายของรอบไหน ไม่ใช่ตัวกำหนดวันที่ธุรกรรม) แก้วันที่เองได้ถ้าต้องการ
 // กดยกเลิก -> ลบรายจ่ายที่ผูกไว้นั้นทิ้ง
 // recordExpense=false ใช้กับบิลรายปี — ติ๊กแค่เช็กลิสต์ "เก็บเงินเดือนนี้แล้ว" ไม่ใช่การจ่ายจริง เลยไม่บันทึกรายจ่าย
 export async function setBillPaid(
@@ -414,7 +408,6 @@ export async function setBillPaid(
   const row = res.data.values?.[0] ?? []
   const name: string = row[0] ?? ''
   const amount = overrideAmount && overrideAmount > 0 ? overrideAmount : Number(row[1]) || 0
-  const dueDay = Number(row[2]) || 1
   const account = (overrideAccount || row[3] || 'KBank') as Transaction['paymentMethod']
   const cur = String(row[5] ?? '').split(/[\s,]+/).filter(Boolean)
   const tag = `[B${rowIndex}:${cycle}]`
@@ -423,8 +416,7 @@ export async function setBillPaid(
   if (paid) {
     set.add(cycle)
     if (recordExpense && amount > 0) {
-      const today = new Date().toISOString().slice(0, 10)
-      const txnDate = overrideDate || (cycle === today.slice(0, 7) ? today : clampDateInCycle(cycle, dueDay))
+      const txnDate = overrideDate || new Date().toISOString().slice(0, 10)
       await addTransaction({
         date: txnDate,
         type: 'รายจ่าย',
