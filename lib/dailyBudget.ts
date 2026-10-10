@@ -1,6 +1,6 @@
 import { Bill, Transaction } from './types'
 import { computeCurrentBalances } from './balances'
-import { billCycleEntries, cyclesOf } from './billCycles'
+import { billCycleEntries, cyclesOf, yearlyMonthlyAmount, yearlyUnpaidWindowCount } from './billCycles'
 
 export interface OutstandingBill {
   name: string
@@ -81,15 +81,12 @@ export function computeDailyBudget(
   const monthlyOutstanding: OutstandingBill[] = []
   const savingsItems: SavingsItem[] = []
 
-  const curMonth = mo + 1 // 1-12
   for (const b of bills) {
     if (b.type === 'yearly') {
       const dm = Math.min(12, Math.max(1, b.dueMonth || 1))
-      // จำนวนเดือนจากตอนนี้ถึงเดือนที่ต้องจ่าย (1-12); ถ้าอยู่ในเดือนที่จ่ายพอดี = 12 (เก็บสำหรับปีหน้า)
-      const monthsUntilDue = ((dm - curMonth - 1 + 12) % 12) + 1
-      // หักยอดที่เคยเก็บไว้ก่อนหน้า (savedCredit, นอกระบบ) ออกจากยอดที่ยังต้องเก็บ ก่อนหารเฉลี่ยต่อเดือน
-      const remaining = Math.max(0, b.amount - (b.savedCredit || 0))
-      const monthly = remaining / monthsUntilDue
+      // จำนวนเดือนในปีนี้ที่ยังไม่ติ๊กเก็บเงิน (11 เดือน ลบรอบที่ติ๊กไปแล้ว ไม่ใช่แค่นับถอยหลังจากวันนี้) — เหมือนกับที่ /bills ใช้ ไม่ให้เลขเพี้ยนกัน
+      const monthsUntilDue = yearlyUnpaidWindowCount(b, today)
+      const monthly = yearlyMonthlyAmount(b, txns, today)
       // ถ้าเดือนนี้โอนเก็บ/จ่ายไปจริงแล้ว (thisCycle อยู่ใน paidCycles) เงินก็หักออกจาก spendable ไปแล้วจริงๆ
       // ไม่ต้องกันสำรองซ้อนอีกชั้นในตัวเลขคาดการณ์นี้
       if (monthly > 0 && !b.paidCycles.includes(thisCycle))

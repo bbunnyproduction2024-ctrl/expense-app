@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Bill, BillType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, THAI_MONTHS_SHORT } from '@/lib/types'
-import { billCycleEntries, yearlyCycleEntries, cyclesOf, CycleEntry } from '@/lib/billCycles'
+import { Bill, BillType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, THAI_MONTHS_SHORT, Transaction } from '@/lib/types'
+import { billCycleEntries, yearlyCycleEntries, yearlyMonthlyAmount, yearlyUnpaidWindowCount, cyclesOf, CycleEntry } from '@/lib/billCycles'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -31,14 +31,6 @@ function billPayMode(b: Bill, cycle: string): 'expense' | 'transfer' {
   return 'expense'
 }
 
-// ยอดเก็บต่อเดือนของบิลรายปี = (ยอดต่อปี − ยอดที่เคยเก็บไว้ก่อนหน้า) ÷ จำนวนเดือนที่เหลือถึงกำหนด (นับจากวันนี้)
-function yearlyMonthlyAmount(b: Bill): number {
-  const curMonth = new Date().getMonth() + 1
-  const monthsLeft = ((b.dueMonth - curMonth - 1 + 12) % 12) + 1
-  const remaining = Math.max(0, b.amount - (b.savedCredit || 0))
-  return remaining / monthsLeft
-}
-
 // ค่าเริ่มต้นวันที่จ่าย = วันนี้เสมอ ไม่ว่าจะจ่ายรอบไหน — เงินออกจากบัญชีจริงวันที่กดจ่าย
 // ธนาคารไม่ย้อนลงวันที่ให้ ต่อให้เป็นการจ่ายบิลที่ค้างมาจากเดือนก่อนก็ตาม (cycle ใช้แค่ผูกว่าเป็นของรอบไหน) — แก้เองได้ในฟอร์มถ้าต้องการ
 function defaultPayDate(): string {
@@ -47,6 +39,7 @@ function defaultPayDate(): string {
 
 export default function BillsPage() {
   const [bills, setBills] = useState<Bill[]>([])
+  const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -71,8 +64,12 @@ export default function BillsPage() {
   async function fetchData() {
     setLoading(true)
     try {
-      const d = await fetch('/api/bills').then((r) => r.json())
+      const [d, t] = await Promise.all([
+        fetch('/api/bills').then((r) => r.json()),
+        fetch('/api/transactions').then((r) => r.json()),
+      ])
       setBills(Array.isArray(d) ? d : [])
+      setTransactions(Array.isArray(t) ? t : [])
     } finally {
       setLoading(false)
     }
@@ -152,7 +149,7 @@ export default function BillsPage() {
   function openPay(b: Bill, cycle: string) {
     const mode = billPayMode(b, cycle)
     setPayingKey(payingKeyOf(b.id, cycle))
-    setPayAmount(mode === 'transfer' ? String(Math.round(yearlyMonthlyAmount(b) * 100) / 100) : String(b.amount))
+    setPayAmount(mode === 'transfer' ? String(Math.round(yearlyMonthlyAmount(b, transactions, new Date()) * 100) / 100) : String(b.amount))
     setPayAccount(mode === 'transfer' && b.account === 'ออมทรัพย์' ? 'KBank' : b.account)
     setPayDate(defaultPayDate())
   }
@@ -236,7 +233,7 @@ export default function BillsPage() {
 
   // ยอดกันไว้รวมต่อเดือน (สำหรับ header) — รายเดือนที่ค้างทั้งเดือนที่แล้ว+เดือนนี้ นับกันไว้ 2 เท่า
   const monthlyReserve = bills.reduce((s, b) => {
-    if (b.type === 'yearly') return s + yearlyMonthlyAmount(b)
+    if (b.type === 'yearly') return s + yearlyMonthlyAmount(b, transactions, new Date())
     if (b.type === 'once') return b.done ? s : s + b.amount / Math.max(1, b.months || 1)
     return s + billCycleEntries(b, CYCLE, PREV_CYCLE, NEXT_CYCLE).reduce((sum, e) => sum + e.amount, 0)
   }, 0)
@@ -429,9 +426,8 @@ export default function BillsPage() {
           <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
             {sorted.map((b) => {
               const done = b.type === 'once' && b.done
-              const curMonth = new Date().getMonth() + 1
-              const monthsLeft = ((b.dueMonth - curMonth - 1 + 12) % 12) + 1
-              const yearlyPerMonth = yearlyMonthlyAmount(b)
+              const monthsLeft = b.type === 'yearly' ? yearlyUnpaidWindowCount(b, new Date()) : 0
+              const yearlyPerMonth = yearlyMonthlyAmount(b, transactions, new Date())
               const onceMonths = Math.max(1, b.months || 1)
               const oncePerMonth = b.amount / onceMonths
               const perMonthCol = b.type === 'yearly' ? yearlyPerMonth : b.type === 'once' && onceMonths > 1 ? oncePerMonth : b.amount
@@ -442,7 +438,7 @@ export default function BillsPage() {
                 b.type === 'monthly'
                   ? billCycleEntries(b, CYCLE, PREV_CYCLE, NEXT_CYCLE)
                   : b.type === 'yearly'
-                    ? yearlyCycleEntries(b, new Date(), CYCLE, PREV_CYCLE, NEXT_CYCLE)
+                    ? yearlyCycleEntries(b, new Date())
                     : []
               const outstanding = cycleEntries.filter((e) => e.status !== 'ahead')
               const caughtUp = b.type !== 'once' && outstanding.length === 0
