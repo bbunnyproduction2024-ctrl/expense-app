@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { Transaction } from '@/lib/types'
 import { computeCurrentBalances } from '@/lib/balances'
 
@@ -38,12 +39,12 @@ export default function CurrentBalanceCard({
             {bal.cash >= 0 ? '+' : ''}฿{fmt(bal.cash)}
           </p>
         </div>
-        <div className="bg-pink-500/10 rounded-xl p-2.5">
+        <Link href="/savings" className="bg-pink-500/10 rounded-xl p-2.5 active:bg-pink-500/20">
           <p className="text-pink-600 text-[11px] mb-0.5">🐷 ออมทรัพย์</p>
           <p className={`font-bold text-sm ${bal.saving >= 0 ? 'text-pink-700' : 'text-red-500'}`}>
             {bal.saving >= 0 ? '+' : ''}฿{fmt(bal.saving)}
           </p>
-        </div>
+        </Link>
       </div>
     </div>
   )
