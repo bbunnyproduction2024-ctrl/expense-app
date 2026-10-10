@@ -23,10 +23,19 @@ function payingKeyOf(billId: string, cycle: string) {
   return `${billId}:${cycle}`
 }
 
-// บิลรายปี: เดือนที่ตรงกับเดือนครบกำหนดจริงของบิลนั้น ถือเป็นการจ่ายเงินจริง (ต้องเลือกช่องทาง/บันทึกรายจ่าย)
-// ส่วนเดือนอื่นๆที่ติ๊กไว้ล่วงหน้าเป็นแค่เช็กลิสต์ "เก็บเงินไว้แล้ว" ไม่มีเงินเข้าออกจริง
-function yearlyNeedsPayment(b: Bill, cycle: string): boolean {
-  return b.type === 'yearly' && Number(cycle.split('-')[1]) === b.dueMonth
+// บิลรายเดือน -> จ่ายจริงเสมอ (expense)
+// บิลรายปี เดือนที่ตรงกับเดือนครบกำหนดจริง -> จ่ายจริงเต็มยอด (expense)
+// บิลรายปี เดือนอื่นๆ ที่ทยอยเก็บล่วงหน้า -> โอนเงินจริงเข้าออมทรัพย์ทุกเดือน (transfer) ไม่ใช่แค่เช็กลิสต์อีกต่อไป
+function billPayMode(b: Bill, cycle: string): 'expense' | 'transfer' {
+  if (b.type === 'yearly' && Number(cycle.split('-')[1]) !== b.dueMonth) return 'transfer'
+  return 'expense'
+}
+
+// ยอดเก็บต่อเดือนของบิลรายปี = ยอดต่อปี ÷ จำนวนเดือนที่เหลือถึงกำหนด (นับจากวันนี้)
+function yearlyMonthlyAmount(b: Bill): number {
+  const curMonth = new Date().getMonth() + 1
+  const monthsLeft = ((b.dueMonth - curMonth - 1 + 12) % 12) + 1
+  return b.amount / monthsLeft
 }
 
 // ค่าเริ่มต้นวันที่จ่าย = วันนี้เสมอ ไม่ว่าจะจ่ายรอบไหน — เงินออกจากบัญชีจริงวันที่กดจ่าย
@@ -126,14 +135,15 @@ export default function BillsPage() {
   }
 
   function openPay(b: Bill, cycle: string) {
+    const mode = billPayMode(b, cycle)
     setPayingKey(payingKeyOf(b.id, cycle))
-    setPayAmount(String(b.amount))
-    setPayAccount(b.account)
+    setPayAmount(mode === 'transfer' ? String(Math.round(yearlyMonthlyAmount(b) * 100) / 100) : String(b.amount))
+    setPayAccount(mode === 'transfer' && b.account === 'ออมทรัพย์' ? 'KBank' : b.account)
     setPayDate(defaultPayDate())
   }
 
-  // รายเดือน = จ่ายจริง บันทึกรายจ่ายอัตโนมัติเสมอ
-  // รายปี = เดือนที่ครบกำหนดจริงก็บันทึกรายจ่ายจริงเหมือนกัน ส่วนเดือนอื่นเป็นแค่เช็กลิสต์ "เก็บเดือนนี้แล้ว" ไม่บันทึกรายจ่าย
+  // รายเดือน และ รายปีเดือนที่ครบกำหนดจริง = จ่ายจริง บันทึกรายจ่ายอัตโนมัติ (หมวด "ชำระบิล")
+  // รายปีเดือนอื่นๆ = โอนเงินจริงเข้าออมทรัพย์ทุกเดือน (เก็บล่วงหน้า สะสมไปเรื่อยๆ)
   async function setPaid(
     b: Bill,
     cycle: string,
@@ -155,7 +165,7 @@ export default function BillsPage() {
           amount: overrideAmount,
           account: overrideAccount,
           date: overrideDate,
-          recordExpense: b.type === 'monthly' || yearlyNeedsPayment(b, cycle),
+          mode: billPayMode(b, cycle),
         }),
       })
       setPayingKey(null)
@@ -172,11 +182,9 @@ export default function BillsPage() {
   }
 
   // กดวงกลม/ชิปของบิลรายเดือน-รายปี: จ่ายแล้ว -> ยกเลิกตรงๆ
-  // ยังไม่จ่าย+รายเดือน หรือ รายปีเดือนที่ครบกำหนดจริง -> เปิดช่องยืนยันยอด/ช่องทางจ่าย
-  // ยังไม่จ่าย+รายปีเดือนอื่น -> ติ๊กตรงๆ (แค่เช็กลิสต์ ไม่มีเงินจริง ไม่ต้องเลือกช่องทาง)
+  // ยังไม่จ่าย (ไม่ว่ารายเดือนหรือรายปี เดือนไหนก็ตาม) -> เปิดช่องยืนยันยอด/ช่องทาง เพราะมีเงินเข้าออกจริงทุกเดือนแล้ว
   function handleCycleClick(b: Bill, cycle: string, isPaid: boolean) {
     if (isPaid) return setPaid(b, cycle, false)
-    if (b.type === 'yearly' && !yearlyNeedsPayment(b, cycle)) return setPaid(b, cycle, true)
     const key = payingKeyOf(b.id, cycle)
     return payingKey === key ? setPayingKey(null) : openPay(b, cycle)
   }
@@ -393,7 +401,7 @@ export default function BillsPage() {
               const done = b.type === 'once' && b.done
               const curMonth = new Date().getMonth() + 1
               const monthsLeft = ((b.dueMonth - curMonth - 1 + 12) % 12) + 1
-              const yearlyPerMonth = b.amount / monthsLeft
+              const yearlyPerMonth = yearlyMonthlyAmount(b)
               const onceMonths = Math.max(1, b.months || 1)
               const oncePerMonth = b.amount / onceMonths
               const perMonthCol = b.type === 'yearly' ? yearlyPerMonth : b.type === 'once' && onceMonths > 1 ? oncePerMonth : b.amount
@@ -502,62 +510,75 @@ export default function BillsPage() {
                     </button>
                   </div>
 
-                  {payingCycleForThisBill && (
-                    <div className="px-4 pb-3 pt-1 bg-blue-50 border-t border-blue-100 space-y-2.5">
-                      <p className="text-[11px] text-blue-500">
-                        ยืนยันยอดที่จ่ายจริงของ{cycleLabel(payingCycleForThisBill)} (ที่กันไว้เป็นแค่ยอดเผื่อ แก้ได้ถ้าไม่เท่าเดิม)
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-blue-500 w-16 flex-shrink-0">ยอดจ่าย ฿</span>
-                        <input
-                          type="number"
-                          inputMode="decimal"
-                          value={payAmount}
-                          onChange={(e) => setPayAmount(e.target.value)}
-                          className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-blue-500 w-16 flex-shrink-0">วันที่จ่าย</span>
-                        <input
-                          type="date"
-                          value={payDate}
-                          onChange={(e) => setPayDate(e.target.value)}
-                          onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
-                          className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white cursor-pointer"
-                        />
-                      </div>
-                      <div>
-                        <span className="text-xs text-blue-500 block mb-1">จ่ายจากบัญชี</span>
-                        <div className="flex gap-1.5">
-                          {PAYMENT_METHODS.map((m) => (
-                            <button
-                              key={m}
-                              type="button"
-                              onClick={() => setPayAccount(m)}
-                              className={`flex-1 min-w-0 px-1 py-1.5 rounded-lg text-xs font-semibold border tracking-tight ${
-                                payAccount === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'bg-white border-gray-200 text-gray-500'
-                              }`}
-                            >
-                              {PAYMENT_METHOD_LABELS[m]}
+                  {payingCycleForThisBill &&
+                    (() => {
+                      const payMode = billPayMode(b, payingCycleForThisBill)
+                      const accountChoices = payMode === 'transfer' ? PAYMENT_METHODS.filter((m) => m !== 'ออมทรัพย์') : PAYMENT_METHODS
+                      return (
+                        <div className="px-4 pb-3 pt-1 bg-blue-50 border-t border-blue-100 space-y-2.5">
+                          <p className="text-[11px] text-blue-500">
+                            {payMode === 'transfer'
+                              ? `ยืนยันยอดเก็บเข้าออมทรัพย์ของ${cycleLabel(payingCycleForThisBill)} (ยอดเฉลี่ยต่อเดือน แก้ได้ถ้าไม่เท่าเดิม)`
+                              : `ยืนยันยอดที่จ่ายจริงของ${cycleLabel(payingCycleForThisBill)} (ที่กันไว้เป็นแค่ยอดเผื่อ แก้ได้ถ้าไม่เท่าเดิม)`}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-blue-500 w-16 flex-shrink-0">{payMode === 'transfer' ? 'ยอดเก็บ ฿' : 'ยอดจ่าย ฿'}</span>
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              value={payAmount}
+                              onChange={(e) => setPayAmount(e.target.value)}
+                              className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white"
+                            />
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-blue-500 w-16 flex-shrink-0">วันที่{payMode === 'transfer' ? 'โอน' : 'จ่าย'}</span>
+                            <input
+                              type="date"
+                              value={payDate}
+                              onChange={(e) => setPayDate(e.target.value)}
+                              onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
+                              className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white cursor-pointer"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-xs text-blue-500 block mb-1">
+                              {payMode === 'transfer' ? 'โอนจากบัญชี (เข้าออมทรัพย์)' : 'จ่ายจากบัญชี'}
+                            </span>
+                            <div className="flex gap-1.5">
+                              {accountChoices.map((m) => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  onClick={() => setPayAccount(m)}
+                                  className={`flex-1 min-w-0 px-1 py-1.5 rounded-lg text-xs font-semibold border tracking-tight ${
+                                    payAccount === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'bg-white border-gray-200 text-gray-500'
+                                  }`}
+                                >
+                                  {PAYMENT_METHOD_LABELS[m]}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="flex gap-2 justify-end">
+                            <button onClick={() => setPayingKey(null)} className="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg">
+                              ยกเลิก
                             </button>
-                          ))}
+                            <button
+                              onClick={() => confirmPay(b, payingCycleForThisBill)}
+                              disabled={busy === payingKeyOf(b.id, payingCycleForThisBill)}
+                              className="px-4 py-1 bg-green-600 text-white text-xs rounded-lg font-semibold disabled:opacity-50"
+                            >
+                              {busy === payingKeyOf(b.id, payingCycleForThisBill)
+                                ? 'กำลังบันทึก...'
+                                : payMode === 'transfer'
+                                  ? 'ยืนยันเก็บเงินแล้ว'
+                                  : 'ยืนยันจ่ายแล้ว'}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <button onClick={() => setPayingKey(null)} className="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg">
-                          ยกเลิก
-                        </button>
-                        <button
-                          onClick={() => confirmPay(b, payingCycleForThisBill)}
-                          disabled={busy === payingKeyOf(b.id, payingCycleForThisBill)}
-                          className="px-4 py-1 bg-green-600 text-white text-xs rounded-lg font-semibold disabled:opacity-50"
-                        >
-                          {busy === payingKeyOf(b.id, payingCycleForThisBill) ? 'กำลังบันทึก...' : 'ยืนยันจ่ายแล้ว'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                      )
+                    })()}
                 </div>
               )
             })}
@@ -567,7 +588,8 @@ export default function BillsPage() {
         <p className="text-xs text-gray-400 px-1 leading-relaxed">
           <b>รายเดือน</b>: กด ○→✓ เมื่อจ่ายบิลรอบนั้นแล้ว — ระบบจะ<b>บันทึกรายจ่ายให้อัตโนมัติ</b>
           (หมวด &quot;ชำระบิล&quot;) แล้วเริ่มกันเงินไว้จ่ายบิลเดือนหน้าต่อทันที <b>ไม่ต้องไปบันทึกรายจ่ายซ้ำเองอีก</b> &nbsp;·&nbsp;
-          <b>รายปี</b>: เฉลี่ยยอดต่อปี ÷ เดือนที่เหลือถึงเดือนจ่าย และมีปุ่มติ๊ก &quot;เก็บเดือนนี้แล้ว&quot; เป็นเช็กลิสต์ (ไม่บันทึกรายจ่าย) &nbsp;·&nbsp;
+          <b>รายปี</b>: เฉลี่ยยอดต่อปี ÷ เดือนที่เหลือถึงเดือนจ่าย — ติ๊กแต่ละเดือน<b>โอนเงินเข้าออมทรัพย์จริง</b>ตามยอดเฉลี่ย สะสมไว้
+          จนถึงเดือนครบกำหนดจะให้<b>จ่ายเต็มยอดจริง</b>แทน &nbsp;·&nbsp;
           <b>เก็บก้อน</b>: เฉลี่ยตาม &quot;เก็บกี่เดือน&quot; · กด ○→✓ เมื่อใช้เงินก้อนแล้ว
           <br />
           ถ้าลืมติ๊กเดือนที่แล้ว จะมีปุ่มแยก <b>&quot;เดือนที่แล้ว&quot; กับ &quot;เดือนนี้&quot;</b> ให้ติ๊กทีละเดือน ไม่รวมเป็นก้อนเดียว

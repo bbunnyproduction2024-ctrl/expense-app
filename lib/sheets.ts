@@ -149,6 +149,7 @@ export async function addTransfer(input: TransferInput): Promise<void> {
 }
 
 // ลบทั้งคู่ของการโอน โดยดู token จากแถวที่เลือก
+// ถ้าเป็นการโอนที่ผูกกับบิล (มี tag [B<row>:<cycle>] ด้วย เช่น การโอนเก็บเงินรายปีรายเดือน) ให้เอารอบนั้นออกจาก PaidCycles ด้วย
 export async function deleteTransferByRow(rowIndex: number): Promise<void> {
   const sheets = getSheets()
   const res = await sheets.spreadsheets.values.get({
@@ -158,6 +159,8 @@ export async function deleteTransferByRow(rowIndex: number): Promise<void> {
   const rows = res.data.values ?? []
   const target = rows[rowIndex - 2]
   const note: string = target?.[6] ?? ''
+  const billTag = note.match(/\[B\d+:[\d-]+\]/)
+  if (billTag) await unmarkBillCycleByTag(billTag[0])
   const m = note.match(/\[T\d+\]/)
   const indices: number[] = []
   if (m) {
@@ -383,21 +386,22 @@ async function deleteTxnsByTag(tag: string): Promise<void> {
   })
 }
 
-// เปิด/ปิดสถานะ "จ่ายแล้ว" ของบิลในรอบ yyyy-MM
-// กดจ่ายแล้ว -> บันทึกรายจ่ายจริงให้อัตโนมัติ (หมวด "ชำระบิล") ผูกด้วย tag [B<row>:<cycle>]
-//   รับ overrideAmount/overrideAccount/overrideDate ได้ — เผื่อยอดจริงไม่เท่ากับที่กันไว้ จ่ายคนละบัญชี หรือวันที่ไม่ตรงที่กะไว้
+// เปิด/ปิดสถานะ "จ่ายแล้ว" ของบิลในรอบ yyyy-MM — ผูกด้วย tag [B<row>:<cycle>]
+//   mode='expense' (บิลรายเดือน, หรือบิลรายปีเดือนที่ครบกำหนดจริง) -> บันทึกรายจ่ายจริง หมวด "ชำระบิล"
+//   mode='transfer' (บิลรายปีเดือนอื่นๆ ที่ทยอยเก็บล่วงหน้า) -> โอนเงินจริงเข้าออมทรัพย์ (sinking fund) ไม่ใช่รายจ่าย
+//   mode='none' -> แค่เช็กลิสต์ ไม่มีเงินเข้าออกจริง
+//   รับ overrideAmount/overrideAccount/overrideDate ได้ — เผื่อยอดจริงไม่เท่ากับที่กันไว้ จ่าย/โอนจากคนละบัญชี หรือวันที่ไม่ตรงที่กะไว้
 //   (ไม่แก้ยอด/บัญชีเริ่มต้นของบิลใน sheet — เป็นแค่ยอดที่จ่ายจริงครั้งนี้ครั้งเดียว)
 //   ถ้าไม่ระบุวันที่: ใช้วันนี้ตามจริงเสมอ — เงินออกจากบัญชีจริงวันไหนก็ลงวันนั้น แม้จะเป็นการจ่ายตามหลังบิลที่ค้างมาจากเดือนก่อนก็ตาม
 //   (ธนาคารไม่ย้อนลงวันที่ให้; cycle ใช้แค่ผูกว่าเงินก้อนนี้จ่ายของรอบไหน ไม่ใช่ตัวกำหนดวันที่ธุรกรรม) แก้วันที่เองได้ถ้าต้องการ
-// กดยกเลิก -> ลบรายจ่ายที่ผูกไว้นั้นทิ้ง
-// recordExpense=false ใช้กับบิลรายปี — ติ๊กแค่เช็กลิสต์ "เก็บเงินเดือนนี้แล้ว" ไม่ใช่การจ่ายจริง เลยไม่บันทึกรายจ่าย
+// กดยกเลิก -> ลบรายจ่าย/การโอนที่ผูกไว้นั้นทิ้ง
 export async function setBillPaid(
   rowIndex: number,
   cycle: string,
   paid: boolean,
   overrideAmount?: number,
   overrideAccount?: string,
-  recordExpense = true,
+  mode: 'expense' | 'transfer' | 'none' = 'expense',
   overrideDate?: string
 ): Promise<void> {
   const sheets = getSheets()
@@ -415,20 +419,24 @@ export async function setBillPaid(
   const set = new Set(cur)
   if (paid) {
     set.add(cycle)
-    if (recordExpense && amount > 0) {
+    if (mode !== 'none' && amount > 0) {
       const txnDate = overrideDate || new Date().toISOString().slice(0, 10)
-      await addTransaction({
-        date: txnDate,
-        type: 'รายจ่าย',
-        category: 'ชำระบิล' as TransactionInput['category'],
-        amount,
-        paymentMethod: account,
-        note: `ชำระบิล ${name} ${tag}`,
-      })
+      if (mode === 'transfer') {
+        await addTransfer({ date: txnDate, amount, from: account, to: 'ออมทรัพย์', note: `เก็บเงิน ${name} ${tag}` })
+      } else {
+        await addTransaction({
+          date: txnDate,
+          type: 'รายจ่าย',
+          category: 'ชำระบิล' as TransactionInput['category'],
+          amount,
+          paymentMethod: account,
+          note: `ชำระบิล ${name} ${tag}`,
+        })
+      }
     }
   } else {
     set.delete(cycle)
-    if (recordExpense) await deleteTxnsByTag(tag)
+    if (mode !== 'none') await deleteTxnsByTag(tag)
   }
 
   await sheets.spreadsheets.values.update({
