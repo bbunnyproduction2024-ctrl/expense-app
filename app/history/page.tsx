@@ -11,12 +11,53 @@ function formatBaht(amount: number) {
   return amount.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+// รายจ่ายที่มาจาก "ซื้อของ" (หน้า /shop) จะมี note ลงท้ายด้วย "(ของซื้อ)" และมี "@ร้าน" ก่อนหน้า (ถ้าระบุร้าน)
+// คืนชื่อร้าน ('' ถ้าไม่ได้ระบุร้าน) หรือ null ถ้าไม่ใช่รายการซื้อของ
+function purchaseStore(t: Transaction): string | null {
+  if (t.type !== 'รายจ่าย' || !/\(ของซื้อ\)\s*$/.test(t.note ?? '')) return null
+  const m = (t.note ?? '').match(/@([^@()]+?)\s*\(ของซื้อ\)\s*$/)
+  return m ? m[1].trim() : ''
+}
+
+interface PurchaseGroupRow {
+  kind: 'group'
+  key: string
+  store: string
+  items: Transaction[]
+}
+interface SingleRow {
+  kind: 'single'
+  txn: Transaction
+}
+
+// รวมรายการซื้อของจากร้านเดียวกันในวันเดียวกันเป็นกลุ่มเดียว (ถ้ามีมากกว่า 1 รายการ) — รายการอื่นคงเดิม
+function buildDayRows(dayTxns: Transaction[]): (PurchaseGroupRow | SingleRow)[] {
+  const rows: (PurchaseGroupRow | SingleRow)[] = []
+  const groupIndexByStore = new Map<string, number>()
+  for (const t of dayTxns) {
+    const store = purchaseStore(t)
+    if (store !== null) {
+      const idx = groupIndexByStore.get(store)
+      if (idx !== undefined) {
+        ;(rows[idx] as PurchaseGroupRow).items.push(t)
+      } else {
+        groupIndexByStore.set(store, rows.length)
+        rows.push({ kind: 'group', key: `${t.date}__${store}`, store, items: [t] })
+      }
+    } else {
+      rows.push({ kind: 'single', txn: t })
+    }
+  }
+  return rows
+}
+
 export default function HistoryPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [filterType, setFilterType] = useState<TransactionType | 'ทั้งหมด'>('ทั้งหมด')
   const [filterPayment, setFilterPayment] = useState<PaymentMethod | 'ทั้งหมด'>('ทั้งหมด')
   const [filterMonth, setFilterMonth] = useState(() => format(new Date(), 'yyyy-MM'))
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [deleting, setDeleting] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDate, setEditDate] = useState('')
@@ -78,6 +119,133 @@ export default function HistoryPage() {
     } finally {
       setDeleting(null)
     }
+  }
+
+  function toggleGroup(key: string) {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
+  function renderTxnRow(t: Transaction) {
+    const isTransfer = t.category === TRANSFER_CATEGORY
+    return (
+      <div key={t.id}>
+        <div className="flex items-center px-4 py-3">
+          <div
+            className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 ${
+              isTransfer ? 'bg-indigo-100' : t.type === 'รายรับ' ? 'bg-green-100' : 'bg-red-100'
+            }`}
+          >
+            {isTransfer ? '🔄' : t.type === 'รายรับ' ? '💰' : '💸'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-gray-800 text-sm truncate">
+              {isTransfer ? cleanNote(t.note) || 'โอนเงิน' : t.category}
+            </p>
+            <p className="text-gray-400 text-xs truncate">
+              {PAYMENT_METHOD_LABELS[t.paymentMethod] ?? t.paymentMethod}
+              {!isTransfer && t.note ? ` · ${cleanNote(t.note)}` : ''}
+            </p>
+          </div>
+          <p className={`font-semibold text-sm mr-2 flex-shrink-0 ${
+            isTransfer ? 'text-gray-400' : t.type === 'รายรับ' ? 'text-green-600' : 'text-red-500'
+          }`}>
+            {isTransfer ? '⇄ ' : t.type === 'รายรับ' ? '+' : '-'}฿{formatBaht(t.amount)}
+          </p>
+          {!isTransfer && (
+            <button
+              onClick={() => { setEditingId(t.id); setEditDate(t.date); setEditAmount(String(t.amount)); setEditCategory(t.category); setEditNote(t.note ?? ''); setEditPayment(t.paymentMethod) }}
+              className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0"
+              aria-label="แก้ไขวันที่"
+            >✏️</button>
+          )}
+          <button
+            onClick={() => handleDelete(t)}
+            disabled={deleting === t.id}
+            className="text-gray-300 hover:text-red-400 active:text-red-600 text-lg flex-shrink-0 transition-colors"
+            aria-label="ลบ"
+          >
+            {deleting === t.id ? '⏳' : '🗑'}
+          </button>
+        </div>
+        {editingId === t.id && (
+          <div className="px-4 pb-3 pt-2 space-y-2.5 bg-blue-50 border-t border-blue-100">
+            <div className="space-y-1.5">
+              <span className="text-xs text-blue-500">วันที่</span>
+              <div className="flex items-center gap-1.5">
+                <button type="button"
+                  onClick={() => { const d = new Date(editDate); d.setDate(d.getDate() - 1); setEditDate(d.toISOString().slice(0,10)) }}
+                  className="w-8 h-8 rounded-full bg-white border border-blue-200 text-gray-500 flex items-center justify-center text-base flex-shrink-0">‹</button>
+                <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
+                  onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
+                  className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white cursor-pointer"
+                />
+                <button type="button"
+                  onClick={() => { const d = new Date(editDate); d.setDate(d.getDate() + 1); setEditDate(d.toISOString().slice(0,10)) }}
+                  className="w-8 h-8 rounded-full bg-white border border-blue-200 text-gray-500 flex items-center justify-center text-base flex-shrink-0">›</button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-blue-500 w-14 flex-shrink-0">ราคา ฿</span>
+              <input type="number" inputMode="decimal" value={editAmount}
+                onChange={e => setEditAmount(e.target.value)}
+                className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white"
+              />
+            </div>
+            <div>
+              <span className="text-xs text-blue-500 block mb-1">ช่องทางชำระ</span>
+              <div className="flex gap-2">
+                {PAYMENT_METHODS.map(m => (
+                  <button key={m} type="button" onClick={() => setEditPayment(m)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                      editPayment === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'bg-white border-gray-200 text-gray-500'
+                    }`}>
+                    {PAYMENT_METHOD_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className="text-xs text-blue-500 block mb-1">หมวดหมู่</span>
+              <div className="flex flex-wrap gap-1.5">
+                {(t.type === 'รายรับ' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(c => (
+                  <button key={c} type="button" onClick={() => setEditCategory(c)}
+                    className={`px-2.5 py-1 rounded-lg text-xs border transition-all ${
+                      editCategory === c
+                        ? 'bg-blue-500 border-blue-500 text-white font-semibold'
+                        : 'bg-white border-gray-200 text-gray-600'
+                    }`}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-blue-500 w-14 flex-shrink-0">หมายเหตุ</span>
+              <input type="text" value={editNote}
+                onChange={e => setEditNote(e.target.value)}
+                placeholder="เพิ่มหมายเหตุ..."
+                className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setEditingId(null)}
+                className="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg">
+                ยกเลิก
+              </button>
+              <button onClick={() => handleEdit(t)}
+                className="px-4 py-1 bg-blue-500 text-white text-xs rounded-lg font-semibold">
+                บันทึก
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    )
   }
 
   const filtered = transactions.filter((t) => {
@@ -194,121 +362,38 @@ export default function HistoryPage() {
                   </p>
                 </div>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
-                  {grouped[date].map((t) => {
-                    const isTransfer = t.category === TRANSFER_CATEGORY
+                  {buildDayRows(grouped[date]).map((row) => {
+                    if (row.kind === 'single' || row.items.length === 1) {
+                      return renderTxnRow(row.kind === 'single' ? row.txn : row.items[0])
+                    }
+                    const total = row.items.reduce((s, t) => s + t.amount, 0)
+                    const expanded = expandedGroups.has(row.key)
                     return (
-                    <div key={t.id}>
-                      <div className="flex items-center px-4 py-3">
-                        <div
-                          className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 ${
-                            isTransfer ? 'bg-indigo-100' : t.type === 'รายรับ' ? 'bg-green-100' : 'bg-red-100'
-                          }`}
-                        >
-                          {isTransfer ? '🔄' : t.type === 'รายรับ' ? '💰' : '💸'}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-800 text-sm truncate">
-                            {isTransfer ? cleanNote(t.note) || 'โอนเงิน' : t.category}
-                          </p>
-                          <p className="text-gray-400 text-xs truncate">
-                            {PAYMENT_METHOD_LABELS[t.paymentMethod] ?? t.paymentMethod}
-                            {!isTransfer && t.note ? ` · ${cleanNote(t.note)}` : ''}
-                          </p>
-                        </div>
-                        <p className={`font-semibold text-sm mr-2 flex-shrink-0 ${
-                          isTransfer ? 'text-gray-400' : t.type === 'รายรับ' ? 'text-green-600' : 'text-red-500'
-                        }`}>
-                          {isTransfer ? '⇄ ' : t.type === 'รายรับ' ? '+' : '-'}฿{formatBaht(t.amount)}
-                        </p>
-                        {!isTransfer && (
-                          <button
-                            onClick={() => { setEditingId(t.id); setEditDate(t.date); setEditAmount(String(t.amount)); setEditCategory(t.category); setEditNote(t.note ?? ''); setEditPayment(t.paymentMethod) }}
-                            className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0"
-                            aria-label="แก้ไขวันที่"
-                          >✏️</button>
-                        )}
+                      <div key={row.key}>
                         <button
-                          onClick={() => handleDelete(t)}
-                          disabled={deleting === t.id}
-                          className="text-gray-300 hover:text-red-400 active:text-red-600 text-lg flex-shrink-0 transition-colors"
-                          aria-label="ลบ"
+                          onClick={() => toggleGroup(row.key)}
+                          className="w-full flex items-center px-4 py-3 text-left"
                         >
-                          {deleting === t.id ? '⏳' : '🗑'}
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 bg-red-100">
+                            🛒
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-800 text-sm truncate">
+                              ซื้อของ{row.store ? ` @${row.store}` : ''}
+                            </p>
+                            <p className="text-gray-400 text-xs truncate">{row.items.length} ชิ้น</p>
+                          </div>
+                          <p className="font-semibold text-sm mr-2 flex-shrink-0 text-red-500">
+                            -฿{formatBaht(total)}
+                          </p>
+                          <span className="text-gray-300 text-xs flex-shrink-0 w-4 text-center">{expanded ? '▲' : '▼'}</span>
                         </button>
+                        {expanded && (
+                          <div className="bg-gray-50 divide-y divide-gray-100">
+                            {row.items.map((t) => renderTxnRow(t))}
+                          </div>
+                        )}
                       </div>
-                      {editingId === t.id && (
-                        <div className="px-4 pb-3 pt-2 space-y-2.5 bg-blue-50 border-t border-blue-100">
-                          <div className="space-y-1.5">
-                            <span className="text-xs text-blue-500">วันที่</span>
-                            <div className="flex items-center gap-1.5">
-                              <button type="button"
-                                onClick={() => { const d = new Date(editDate); d.setDate(d.getDate() - 1); setEditDate(d.toISOString().slice(0,10)) }}
-                                className="w-8 h-8 rounded-full bg-white border border-blue-200 text-gray-500 flex items-center justify-center text-base flex-shrink-0">‹</button>
-                              <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)}
-                                onClick={(e) => (e.currentTarget as HTMLInputElement).showPicker?.()}
-                                className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white cursor-pointer"
-                              />
-                              <button type="button"
-                                onClick={() => { const d = new Date(editDate); d.setDate(d.getDate() + 1); setEditDate(d.toISOString().slice(0,10)) }}
-                                className="w-8 h-8 rounded-full bg-white border border-blue-200 text-gray-500 flex items-center justify-center text-base flex-shrink-0">›</button>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-blue-500 w-14 flex-shrink-0">ราคา ฿</span>
-                            <input type="number" inputMode="decimal" value={editAmount}
-                              onChange={e => setEditAmount(e.target.value)}
-                              className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <span className="text-xs text-blue-500 block mb-1">ช่องทางชำระ</span>
-                            <div className="flex gap-2">
-                              {PAYMENT_METHODS.map(m => (
-                                <button key={m} type="button" onClick={() => setEditPayment(m)}
-                                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                    editPayment === m ? 'bg-sky-100 border-sky-400 text-sky-700' : 'bg-white border-gray-200 text-gray-500'
-                                  }`}>
-                                  {PAYMENT_METHOD_LABELS[m]}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <div>
-                            <span className="text-xs text-blue-500 block mb-1">หมวดหมู่</span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {(t.type === 'รายรับ' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(c => (
-                                <button key={c} type="button" onClick={() => setEditCategory(c)}
-                                  className={`px-2.5 py-1 rounded-lg text-xs border transition-all ${
-                                    editCategory === c
-                                      ? 'bg-blue-500 border-blue-500 text-white font-semibold'
-                                      : 'bg-white border-gray-200 text-gray-600'
-                                  }`}>
-                                  {c}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-blue-500 w-14 flex-shrink-0">หมายเหตุ</span>
-                            <input type="text" value={editNote}
-                              onChange={e => setEditNote(e.target.value)}
-                              placeholder="เพิ่มหมายเหตุ..."
-                              className="flex-1 text-sm border border-blue-300 rounded-lg px-2 py-1 outline-none focus:border-blue-500 bg-white"
-                            />
-                          </div>
-                          <div className="flex gap-2 justify-end">
-                            <button onClick={() => setEditingId(null)}
-                              className="px-3 py-1 bg-gray-200 text-gray-600 text-xs rounded-lg">
-                              ยกเลิก
-                            </button>
-                            <button onClick={() => handleEdit(t)}
-                              className="px-4 py-1 bg-blue-500 text-white text-xs rounded-lg font-semibold">
-                              บันทึก
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
                     )
                   })}
                 </div>
