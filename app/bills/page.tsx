@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Bill, BillType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, THAI_MONTHS_SHORT, Transaction } from '@/lib/types'
-import { billCycleEntries, yearlyCycleEntries, yearlyMonthlyAmount, yearlyUnpaidWindowCount, cyclesOf, CycleEntry } from '@/lib/billCycles'
+import { billCycleEntries, yearlyCycleEntries, yearlyMonthlyAmount, yearlyUnpaidWindowCount, yearlyPeriodMonths, yearlyNextDueMonth, yearlyDueCycles, cyclesOf, CycleEntry } from '@/lib/billCycles'
 
 function fmt(n: number) {
   return n.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -24,11 +24,13 @@ function payingKeyOf(billId: string, cycle: string) {
 }
 
 // บิลรายเดือน -> จ่ายจริงเสมอ (expense)
-// บิลรายปี เดือนที่ตรงกับเดือนครบกำหนดจริง -> จ่ายจริงเต็มยอด (expense)
-// บิลรายปี เดือนอื่นๆ ที่ทยอยเก็บล่วงหน้า -> โอนเงินจริงเข้าออมทรัพย์ทุกเดือน (transfer) ไม่ใช่แค่เช็กลิสต์อีกต่อไป
+// บิลรายปี รอบที่ตรงกับรอบครบกำหนดจริง (รอบล่าสุดที่ยังไม่จ่าย หรือรอบถัดไปถ้าถึงเวลาแล้ว) -> จ่ายจริงเต็มยอด (expense)
+// บิลรายปี รอบอื่นๆ ระหว่างทาง -> โอนเงินจริงเข้าออมทรัพย์ทุกเดือน (transfer) ไม่ใช่แค่เช็กลิสต์อีกต่อไป
+// เทียบกับรอบครบกำหนดจริงที่คำนวณสดๆ (ไม่ใช่ b.dueMonth ตรงๆ) เพราะบิลรอบสั้นกว่าปี dueMonth ที่เก็บไว้เป็นแค่จุดยึดรอบล่าสุด ไม่ใช่เดือนครบกำหนดรอบหน้าเสมอไป
 function billPayMode(b: Bill, cycle: string): 'expense' | 'transfer' {
-  if (b.type === 'yearly' && Number(cycle.split('-')[1]) !== b.dueMonth) return 'transfer'
-  return 'expense'
+  if (b.type !== 'yearly') return 'expense'
+  const { lastDue, nextDue } = yearlyDueCycles(b, new Date())
+  return cycle === lastDue || cycle === nextDue ? 'expense' : 'transfer'
 }
 
 // ค่าเริ่มต้นวันที่จ่าย = วันนี้เสมอ ไม่ว่าจะจ่ายรอบไหน — เงินออกจากบัญชีจริงวันที่กดจ่าย
@@ -167,6 +169,7 @@ export default function BillsPage() {
     const key = payingKeyOf(b.id, cycle)
     setBusy(key)
     try {
+      const mode = billPayMode(b, cycle)
       await fetch('/api/bills/paid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -177,9 +180,22 @@ export default function BillsPage() {
           amount: overrideAmount,
           account: overrideAccount,
           date: overrideDate,
-          mode: billPayMode(b, cycle),
+          mode,
         }),
       })
+      // จ่ายบิลรายปีจริงตอนครบกำหนดแล้ว -> เลื่อนจุดยึด dueMonth ให้ตรงกับเดือนของรอบที่เพิ่งจ่ายไป
+      // (ปกติบิลรอบ 12 เดือนจะได้เดือนเดิม ไม่กระทบอะไร — มีผลจริงเฉพาะบิลที่ตั้งรอบสั้นกว่าปี เช่น ทุก 3/5 เดือน
+      // ที่เดือนครบกำหนดหมุนไปเรื่อยๆ ไม่ใช่เดือนเดิมทุกรอบ — ไม่ใช่ "+จำนวนเดือนในรอบ" แต่คือเดือนของ cycle ที่เพิ่งจ่ายจริงนี้เอง)
+      if (paid && mode === 'expense' && b.type === 'yearly') {
+        const newDueMonth = Number(cycle.split('-')[1])
+        if (newDueMonth !== b.dueMonth) {
+          await fetch('/api/bills/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rowIndex: parseInt(b.id), dueMonth: newDueMonth }),
+          })
+        }
+      }
       setPayingKey(null)
       await fetchData()
     } finally {
@@ -342,28 +358,44 @@ export default function BillsPage() {
             )}
           </div>
           {type === 'yearly' && (
-            <div>
-              <label className="block text-xs text-gray-400 mb-1">ยอดที่เคยเก็บไว้ก่อนหน้า (ไม่บังคับ ไม่หักเงินจริง)</label>
-              <input
-                type="number"
-                inputMode="decimal"
-                placeholder="0"
-                value={savedCredit}
-                onChange={(e) => setSavedCredit(e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
-              />
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">ทุกกี่เดือน (ว่าง/1 = รายปีปกติ)</label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={60}
+                  placeholder="12"
+                  value={months}
+                  onChange={(e) => setMonths(e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-400 mb-1">เคยเก็บไว้ก่อนหน้า (ไม่หักเงินจริง)</label>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={savedCredit}
+                  onChange={(e) => setSavedCredit(e.target.value)}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
+                />
+              </div>
             </div>
           )}
           {type === 'yearly' && amount && (() => {
             const cur = new Date().getMonth() + 1
             const dm = parseInt(dueMonth) || 1
+            const period = parseInt(months) > 1 ? parseInt(months) : 12
             const monthsLeft = ((dm - cur - 1 + 12) % 12) + 1
             const annual = parseFloat(amount.replace(/,/g, '')) || 0
             const credit = Math.max(0, parseFloat(savedCredit.replace(/,/g, '')) || 0)
             const remaining = Math.max(0, annual - credit)
             return (
               <p className="text-[11px] text-slate-500">
-                จ่าย {THAI_MONTHS_SHORT[dm - 1]} · อีก {monthsLeft} เดือน
+                จ่าย {THAI_MONTHS_SHORT[dm - 1]} ({period === 12 ? 'รายปี' : `ทุก ${period} เดือน`}) · อีก {monthsLeft} เดือน
                 {credit > 0 && ` · เก็บไว้แล้ว ฿${fmt(credit)}`} → กันไว้เดือนละ ฿{fmt(remaining / monthsLeft)}
               </p>
             )
@@ -468,7 +500,12 @@ export default function BillsPage() {
                       </span>
                     ) : (
                       <button
-                        onClick={() => handleCycleClick(b, singleCycle, caughtUp)}
+                        onClick={() => {
+                          // บิลรายปีที่กันไว้ครบแล้ว (caughtUp) ไม่มีรอบเดียวที่ชัดเจนให้ยกเลิก — singleCycle จะ fallback ไปที่ CYCLE (เดือนนี้ตามปฏิทิน)
+                          // ซึ่งอาจไม่ใช่รอบที่บิลนี้ติดตามจริงเลย (เช่น รอบยึดเริ่มต้นที่ตั้งไว้ตรงกับเดือนนี้พอดีโดยบังเอิญ) กดแล้วไม่ควรไปลบสถานะอะไรทิ้ง
+                          if (b.type === 'yearly' && caughtUp) return
+                          handleCycleClick(b, singleCycle, caughtUp)
+                        }}
                         disabled={busy === singleKey}
                         className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 border-2 ${
                           dim
@@ -489,7 +526,7 @@ export default function BillsPage() {
                       <p className="text-gray-400 text-xs truncate">
                         {b.type === 'monthly' && `รายเดือน · ครบกำหนดวันที่ ${b.dueDay}${caughtUp ? ' · จ่ายแล้ว' : ''}`}
                         {b.type === 'yearly' &&
-                          `รายปี ฿${fmt(b.amount)} · จ่าย ${THAI_MONTHS_SHORT[b.dueMonth - 1]} · อีก ${monthsLeft} เดือน${caughtUp ? ' · เก็บเดือนนี้แล้ว ✓' : ''}`}
+                          `${yearlyPeriodMonths(b) === 12 ? 'รายปี' : `ทุก ${yearlyPeriodMonths(b)} เดือน`} ฿${fmt(b.amount)} · จ่าย ${THAI_MONTHS_SHORT[yearlyNextDueMonth(b, new Date()) - 1]} · อีก ${monthsLeft} เดือน${caughtUp ? ' · เก็บเดือนนี้แล้ว ✓' : ''}`}
                         {b.type === 'once' &&
                           (done
                             ? 'เก็บก้อน · ใช้แล้ว'

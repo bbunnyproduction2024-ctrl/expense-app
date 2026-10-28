@@ -45,11 +45,23 @@ function incrementCycle(cycle: string): string {
   return m === 12 ? `${y + 1}-01` : `${y}-${pad(m + 1)}`
 }
 
-// ทุกรอบเก็บเงินรายเดือนในปีปัจจุบันของบิลรายปี (11 เดือน ตั้งแต่เดือนถัดจากครบกำหนดครั้งล่าสุด จนถึงก่อนครบกำหนดครั้งถัดไป)
+export function addMonths(cycle: string, n: number): string {
+  const [y, m] = cycle.split('-').map(Number)
+  const total = y * 12 + (m - 1) + n
+  return `${Math.floor(total / 12)}-${pad((total % 12) + 1)}`
+}
+
+// ความยาวรอบของบิลรายปี (เดือน) — ปกติรายปีจริงๆคือ 12 แต่บางบิลกำหนดสั้นกว่าได้ผ่านช่อง "เก็บกี่เดือน" (เช่น ซื้อของใช้ซ้ำทุก 3/5 เดือน)
+// ไม่ได้กำหนด (months <= 1 ค่าเริ่มต้นเดิม) ถือว่าเป็นรายปีจริง 12 เดือน เพื่อไม่กระทบบิลรายปีเดิมที่มีอยู่แล้ว
+export function yearlyPeriodMonths(bill: Bill): number {
+  return bill.months && bill.months > 1 ? bill.months : 12
+}
+
+// ทุกรอบเก็บเงินรายเดือนในรอบปัจจุบันของบิลรายปี (periodMonths-1 เดือน ตั้งแต่เดือนถัดจากครบกำหนดครั้งล่าสุด จนถึงก่อนครบกำหนดครั้งถัดไป)
 // ไม่ว่าจะติ๊กไปแล้วหรือยัง — ใช้นับว่าเหลือกี่เดือนที่ยังไม่ได้เก็บจริง (ไม่ใช่แค่นับถอยหลังจากวันนี้เฉยๆ)
-export function yearlyWindowCycles(dueMonth: number, today: Date): string[] {
+export function yearlyWindowCycles(dueMonth: number, today: Date, periodMonths = 12): string[] {
   const lastDue = yearlyDueCycle(dueMonth, today)
-  const nextDue = `${Number(lastDue.slice(0, 4)) + 1}-${lastDue.slice(5)}`
+  const nextDue = addMonths(lastDue, periodMonths)
   const out: string[] = []
   let cursor = incrementCycle(lastDue)
   while (cursor < nextDue) {
@@ -59,37 +71,58 @@ export function yearlyWindowCycles(dueMonth: number, today: Date): string[] {
   return out
 }
 
-// จำนวนเดือนในปีนี้ที่ยังไม่ติ๊กเก็บเงิน (11 เดือน ลบรอบที่ติ๊กไปแล้วไม่ว่าจะติ๊กตอนไหน) — ใช้หารยอดที่เหลือต้องเก็บ
+// จำนวนเดือนในรอบนี้ที่ยังไม่ติ๊กเก็บเงิน (periodMonths-1 เดือน ลบรอบที่ติ๊กไปแล้วไม่ว่าจะติ๊กตอนไหน) — ใช้หารยอดที่เหลือต้องเก็บ
 export function yearlyUnpaidWindowCount(bill: Bill, today: Date): number {
-  const window = yearlyWindowCycles(bill.dueMonth, today)
+  const window = yearlyWindowCycles(bill.dueMonth, today, yearlyPeriodMonths(bill))
   return window.filter((c) => !bill.paidCycles.includes(c)).length
 }
 
-// บิลรายปี: รอบครบกำหนดจริง (ตาม dueMonth) ที่ยังไม่จ่าย โผล่เป็นรายการค้างจ่ายจริงเสมอไม่ว่าจะเลยมากี่เดือน
-// บวกกับทุกรอบเก็บเงินรายเดือน ตั้งแต่เดือนถัดจากครบกำหนดครั้งล่าสุด จนถึงเดือนนี้ ที่ยังไม่ติ๊ก (ค้างได้หลายเดือนไม่เหมือนบิลรายเดือนที่ค้างได้สูงสุดแค่ 1 เดือน)
-// เดือนในอนาคตที่ยังไม่ถึงไม่โชว์ล่วงหน้า ยกเว้นไม่มีอะไรค้างเลยถึงโชว์รอบถัดไปเป็นแค่ตัวอย่าง "ahead"
+// บิลรายปี: รอบครบกำหนดจริง (dueMonth = เดือนของรอบครบกำหนดครั้งล่าสุดที่จ่ายแล้ว หรือจุดเริ่มนับถ้าเพิ่งตั้งบิล) ที่ยังไม่จ่าย
+// โผล่เป็นรายการค้างจ่ายจริงเสมอไม่ว่าจะเลยมากี่เดือน บวกรอบครบกำหนดครั้ง*ถัดไป*ถ้าถึงเวลาแล้ว (สำคัญกับบิลรอบสั้นกว่าปี
+// ที่ dueMonth เดิมไม่ตรงเดือนจริงที่จะครบกำหนดรอบหน้า) บวกกับทุกรอบเก็บเงินรายเดือนระหว่างทางที่ยังไม่ติ๊ก
+// (ค้างได้หลายเดือนไม่เหมือนบิลรายเดือนที่ค้างได้สูงสุดแค่ 1 เดือน) เดือนในอนาคตที่ยังไม่ถึงไม่โชว์ล่วงหน้า
+// ยกเว้นไม่มีอะไรค้างเลยถึงโชว์รอบถัดไปเป็นแค่ตัวอย่าง "ahead"
 export function yearlyCycleEntries(bill: Bill, today: Date): CycleEntry[] {
   const thisCycle = cyclesOf(today).thisCycle
-  const dueCycle = yearlyDueCycle(bill.dueMonth, today)
-  const window = yearlyWindowCycles(bill.dueMonth, today)
+  const period = yearlyPeriodMonths(bill)
+  const lastDue = yearlyDueCycle(bill.dueMonth, today)
+  const nextDue = addMonths(lastDue, period)
+  const window = yearlyWindowCycles(bill.dueMonth, today, period)
   const out: CycleEntry[] = []
-  if (!bill.paidCycles.includes(dueCycle)) {
-    out.push({ cycle: dueCycle, amount: bill.amount, status: dueCycle === thisCycle ? 'due' : 'overdue' })
+  if (!bill.paidCycles.includes(lastDue)) {
+    out.push({ cycle: lastDue, amount: bill.amount, status: lastDue === thisCycle ? 'due' : 'overdue' })
   }
   for (const c of window) {
     if (c > thisCycle) break
     if (!bill.paidCycles.includes(c)) out.push({ cycle: c, amount: bill.amount, status: c === thisCycle ? 'due' : 'overdue' })
   }
+  if (nextDue <= thisCycle && !bill.paidCycles.includes(nextDue)) {
+    out.push({ cycle: nextDue, amount: bill.amount, status: nextDue === thisCycle ? 'due' : 'overdue' })
+  }
   if (out.length === 0) {
-    const nextCycle = window.find((c) => c > thisCycle)
-    if (nextCycle) out.push({ cycle: nextCycle, amount: bill.amount, status: 'ahead' })
+    const aheadCycle = window.find((c) => c > thisCycle) ?? (nextDue > thisCycle ? nextDue : undefined)
+    if (aheadCycle) out.push({ cycle: aheadCycle, amount: bill.amount, status: 'ahead' })
   }
   return out
 }
 
-// ยอดที่โอนเก็บเข้าออมทรัพย์จริงไปแล้วของบิลรายปีนี้ ภายในปีปัจจุบัน (รวมเฉพาะขาเข้าออมทรัพย์ ไม่นับขาออกของคู่โอน กันนับซ้ำ)
+// รอบครบกำหนดจริงล่าสุดที่จ่ายแล้ว (หรือจุดเริ่มนับ) และรอบครบกำหนดจริงถัดไปของบิลรายปี — ใช้ร่วมกันทั้งเช็กว่ารอบไหนคือ "จ่ายจริง" (expense)
+// และคำนวณเดือนที่จะแสดงผล เพราะ dueMonth ที่เก็บไว้เป็นแค่จุดยึดของรอบล่าสุด ไม่ใช่เดือนที่จะจ่ายจริงครั้งหน้าเสมอไป (โดยเฉพาะบิลรอบสั้นกว่าปี)
+export function yearlyDueCycles(bill: Bill, today: Date): { lastDue: string; nextDue: string } {
+  const lastDue = yearlyDueCycle(bill.dueMonth, today)
+  const nextDue = addMonths(lastDue, yearlyPeriodMonths(bill))
+  return { lastDue, nextDue }
+}
+
+// เดือนครบกำหนดจริงรอบถัดไปของบิลรายปี (ไม่ใช่ dueMonth ดิบๆ ที่เก็บไว้ — ตัวนั้นเป็นแค่จุดยึดคำนวณรอบล่าสุด
+// สำหรับบิลรายปีจริง (รอบ 12 เดือน) ค่านี้เท่ากับ dueMonth เสมออยู่แล้ว แต่สำหรับบิลรอบสั้นกว่าปี dueMonth เดิมอาจเป็นแค่เดือนเริ่มนับ ไม่ใช่เดือนที่จะจ่ายจริงครั้งหน้า)
+export function yearlyNextDueMonth(bill: Bill, today: Date): number {
+  return Number(yearlyDueCycles(bill, today).nextDue.split('-')[1])
+}
+
+// ยอดที่โอนเก็บเข้าออมทรัพย์จริงไปแล้วของบิลรายปีนี้ ภายในรอบปัจจุบัน (รวมเฉพาะขาเข้าออมทรัพย์ ไม่นับขาออกของคู่โอน กันนับซ้ำ)
 export function yearlyRealSavedInWindow(bill: Bill, txns: Transaction[], today: Date): number {
-  const window = yearlyWindowCycles(bill.dueMonth, today)
+  const window = yearlyWindowCycles(bill.dueMonth, today, yearlyPeriodMonths(bill))
   const prefix = `[B${bill.id}:`
   return txns.reduce((sum, t) => {
     if (t.category !== 'โอนเงิน' || t.type !== 'รายรับ' || t.paymentMethod !== 'ออมทรัพย์') return sum
