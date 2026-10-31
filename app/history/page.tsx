@@ -19,10 +19,22 @@ function purchaseStore(t: Transaction): string | null {
   return m ? m[1].trim() : ''
 }
 
+// การโอนเงินแต่ละครั้งมี 2 ขา (ขาออกจากบัญชีต้นทาง + ขาเข้าบัญชีปลายทาง) ผูกกันด้วย tag [T<epoch>] ใน note
+function transferToken(t: Transaction): string | null {
+  if (t.category !== TRANSFER_CATEGORY) return null
+  const m = (t.note ?? '').match(/\[T\d+\]/)
+  return m ? m[0] : null
+}
+
 interface PurchaseGroupRow {
   kind: 'group'
   key: string
   store: string
+  items: Transaction[]
+}
+interface SavingsTransferGroupRow {
+  kind: 'savingsGroup'
+  key: string
   items: Transaction[]
 }
 interface SingleRow {
@@ -30,11 +42,32 @@ interface SingleRow {
   txn: Transaction
 }
 
-// รวมรายการซื้อของจากร้านเดียวกันในวันเดียวกันเป็นกลุ่มเดียว (ถ้ามีมากกว่า 1 รายการ) — รายการอื่นคงเดิม
-function buildDayRows(dayTxns: Transaction[]): (PurchaseGroupRow | SingleRow)[] {
-  const rows: (PurchaseGroupRow | SingleRow)[] = []
-  const groupIndexByStore = new Map<string, number>()
+// รวมรายการซื้อของจากร้านเดียวกันในวันเดียวกันเป็นกลุ่มเดียว (ถ้ามีมากกว่า 1 รายการ)
+// รวมการโอนเงิน "เข้าออมทรัพย์" ทุกครั้งในวันเดียวกันเป็นกลุ่มเดียว (ทั้ง 2 ขาของทุกรอบที่โอนเข้าวันนั้น) — รายการอื่นคงเดิม
+function buildDayRows(dayTxns: Transaction[]): (PurchaseGroupRow | SavingsTransferGroupRow | SingleRow)[] {
+  // หา token ของการโอนที่ "เข้าออมทรัพย์" จริง (ขาที่เป็นรายรับเข้าบัญชีออมทรัพย์) ก่อน เพื่อรู้ว่าขาคู่ไหนต้องรวมกลุ่มด้วย
+  const savingsTokens = new Set<string>()
   for (const t of dayTxns) {
+    if (t.category === TRANSFER_CATEGORY && t.type === 'รายรับ' && t.paymentMethod === 'ออมทรัพย์') {
+      const tok = transferToken(t)
+      if (tok) savingsTokens.add(tok)
+    }
+  }
+
+  const rows: (PurchaseGroupRow | SavingsTransferGroupRow | SingleRow)[] = []
+  const groupIndexByStore = new Map<string, number>()
+  let savingsGroupIndex: number | undefined
+  for (const t of dayTxns) {
+    const tok = transferToken(t)
+    if (tok && savingsTokens.has(tok)) {
+      if (savingsGroupIndex !== undefined) {
+        ;(rows[savingsGroupIndex] as SavingsTransferGroupRow).items.push(t)
+      } else {
+        savingsGroupIndex = rows.length
+        rows.push({ kind: 'savingsGroup', key: `${t.date}__savings`, items: [t] })
+      }
+      continue
+    }
     const store = purchaseStore(t)
     if (store !== null) {
       const idx = groupIndexByStore.get(store)
@@ -363,28 +396,37 @@ export default function HistoryPage() {
                 </div>
                 <div className="bg-white rounded-2xl overflow-hidden shadow-sm divide-y divide-gray-100">
                   {buildDayRows(grouped[date]).map((row) => {
-                    if (row.kind === 'single' || row.items.length === 1) {
-                      return renderTxnRow(row.kind === 'single' ? row.txn : row.items[0])
-                    }
-                    const total = row.items.reduce((s, t) => s + t.amount, 0)
+                    if (row.kind === 'single') return renderTxnRow(row.txn)
+                    if (row.kind === 'group' && row.items.length === 1) return renderTxnRow(row.items[0])
+
                     const expanded = expandedGroups.has(row.key)
+                    const isSavings = row.kind === 'savingsGroup'
+                    const total = isSavings
+                      ? row.items.filter((t) => t.type === 'รายรับ' && t.paymentMethod === 'ออมทรัพย์').reduce((s, t) => s + t.amount, 0)
+                      : row.items.reduce((s, t) => s + t.amount, 0)
+                    const count = isSavings ? row.items.length / 2 : row.items.length
+
                     return (
                       <div key={row.key}>
                         <button
                           onClick={() => toggleGroup(row.key)}
                           className="w-full flex items-center px-4 py-3 text-left"
                         >
-                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 bg-red-100">
-                            🛒
+                          <div
+                            className={`w-9 h-9 rounded-full flex items-center justify-center text-base mr-3 flex-shrink-0 ${
+                              isSavings ? 'bg-pink-100' : 'bg-red-100'
+                            }`}
+                          >
+                            {isSavings ? '🐷' : '🛒'}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-gray-800 text-sm truncate">
-                              ซื้อของ{row.store ? ` @${row.store}` : ''}
+                              {isSavings ? 'โอนเข้าออมทรัพย์' : `ซื้อของ${row.kind === 'group' && row.store ? ` @${row.store}` : ''}`}
                             </p>
-                            <p className="text-gray-400 text-xs truncate">{row.items.length} ชิ้น</p>
+                            <p className="text-gray-400 text-xs truncate">{count} {isSavings ? 'รายการ' : 'ชิ้น'}</p>
                           </div>
-                          <p className="font-semibold text-sm mr-2 flex-shrink-0 text-red-500">
-                            -฿{formatBaht(total)}
+                          <p className={`font-semibold text-sm mr-2 flex-shrink-0 ${isSavings ? 'text-green-600' : 'text-red-500'}`}>
+                            {isSavings ? '+' : '-'}฿{formatBaht(total)}
                           </p>
                           <span className="text-gray-300 text-xs flex-shrink-0 w-4 text-center">{expanded ? '▲' : '▼'}</span>
                         </button>
