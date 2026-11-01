@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Bill, BillType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, THAI_MONTHS_SHORT, Transaction } from '@/lib/types'
 import { billCycleEntries, yearlyCycleEntries, yearlyMonthlyAmount, yearlyUnpaidWindowCount, yearlyPeriodMonths, yearlyNextDueMonth, yearlyDueCycles, cyclesOf, CycleEntry } from '@/lib/billCycles'
 
@@ -9,7 +10,6 @@ function fmt(n: number) {
 }
 
 const { thisCycle: CYCLE, prevCycle: PREV_CYCLE, nextCycle: NEXT_CYCLE } = cyclesOf(new Date())
-const TYPES: BillType[] = ['monthly', 'yearly', 'once']
 
 function cycleLabel(cycle: string) {
   if (cycle === PREV_CYCLE) return 'เดือนที่แล้ว'
@@ -40,21 +40,11 @@ function defaultPayDate(): string {
 }
 
 export default function BillsPage() {
+  const router = useRouter()
   const [bills, setBills] = useState<Bill[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
-
-  const [editId, setEditId] = useState<string | null>(null)
-  const [type, setType] = useState<BillType>('monthly')
-  const [name, setName] = useState('')
-  const [amount, setAmount] = useState('')
-  const [dueDay, setDueDay] = useState('1')
-  const [dueMonth, setDueMonth] = useState('1')
-  const [months, setMonths] = useState('1')
-  const [account, setAccount] = useState<PaymentMethod>('KBank')
-  const [note, setNote] = useState('')
-  const [savedCredit, setSavedCredit] = useState('0')
 
   // ยืนยันก่อนจ่าย: แก้ยอดจริง + เลือกบัญชีที่จ่ายได้ (ที่กันไว้เป็นแค่ยอดเผื่อ แต่ละเดือนไม่เท่ากัน)
   // คีย์ด้วย "billId:cycle" เพราะบิลเดียวอาจค้างได้หลายเดือน (เดือนที่แล้ว + เดือนนี้) พร้อมกัน
@@ -79,74 +69,6 @@ export default function BillsPage() {
   useEffect(() => {
     fetchData()
   }, [])
-
-  function resetForm() {
-    setEditId(null)
-    setType('monthly')
-    setName('')
-    setAmount('')
-    setDueDay('1')
-    setDueMonth('1')
-    setMonths('1')
-    setAccount('KBank')
-    setNote('')
-    setSavedCredit('0')
-  }
-  function startEdit(b: Bill) {
-    setPayingKey(null)
-    setEditId(b.id)
-    setType(b.type)
-    setName(b.name)
-    setAmount(String(b.amount))
-    setDueDay(String(b.dueDay))
-    setDueMonth(String(b.dueMonth || 1))
-    setMonths(String(b.months || 1))
-    setAccount(b.account)
-    setNote(b.note)
-    setSavedCredit(String(b.savedCredit || 0))
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
-
-  async function save() {
-    const amt = parseFloat(amount.replace(/,/g, ''))
-    const day = parseInt(dueDay) || 1
-    const dmonth = parseInt(dueMonth) || 1
-    const mths = Math.max(1, parseInt(months) || 1)
-    const credit = Math.max(0, parseFloat(savedCredit.replace(/,/g, '')) || 0)
-    if (!name.trim() || !amt || amt <= 0) return
-    if (type === 'monthly' && (day < 1 || day > 31)) return
-    setBusy('save')
-    try {
-      const payload = {
-        name: name.trim(),
-        amount: amt,
-        dueDay: day,
-        dueMonth: dmonth,
-        months: mths,
-        account,
-        note: note.trim(),
-        type,
-        ...(type === 'yearly' ? { savedCredit: credit } : {}),
-      }
-      if (editId) {
-        await fetch('/api/bills/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rowIndex: parseInt(editId), ...payload }),
-        })
-      } else {
-        await fetch('/api/bills', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-      }
-      resetForm()
-      await fetchData()
-    } finally {
-      setBusy(null)
-    }
-  }
 
   function openPay(b: Bill, cycle: string) {
     const mode = billPayMode(b, cycle)
@@ -240,7 +162,6 @@ export default function BillsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ rowIndex: parseInt(b.id) }),
       })
-      if (editId === b.id) resetForm()
       await fetchData()
     } finally {
       setBusy(null)
@@ -265,189 +186,12 @@ export default function BillsPage() {
       </div>
 
       <div className="px-4 py-4 space-y-4">
-        {/* ฟอร์มเพิ่ม / แก้ไข */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
-          <p className="text-sm font-semibold text-gray-600">{editId ? 'แก้ไข' : 'เพิ่มใหม่'}</p>
-
-          <div className="flex gap-1.5">
-            {TYPES.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setType(t)}
-                className={`flex-1 min-w-0 px-1 py-2 rounded-xl text-xs font-semibold border tracking-tight ${
-                  type === t ? 'bg-slate-100 border-slate-400 text-slate-700' : 'border-gray-200 text-gray-500'
-                }`}
-              >
-                {t === 'monthly' ? 'รายเดือน' : t === 'yearly' ? 'รายปี' : 'เก็บก้อน'}
-              </button>
-            ))}
-          </div>
-          <p className="text-[11px] text-gray-400 -mt-1">
-            {type === 'monthly' && 'จ่ายทุกเดือน — กันเต็มจำนวนจนกว่าจะกดจ่าย'}
-            {type === 'yearly' && 'ใส่ยอดต่อปี + เดือนที่จ่าย — ระบบเฉลี่ยกันไว้ให้พอดีวันครบกำหนด'}
-            {type === 'once' && 'เก็บก้อนไว้จ่ายทีเดียว — เลือกได้ว่าจะเก็บกี่เดือน กันไว้จนกดว่าใช้แล้ว'}
-          </p>
-
-          <input
-            type="text"
-            placeholder={
-              type === 'once' ? 'ชื่อ เช่น เก็บซื้อเมล็ดกาแฟ' : 'ชื่อ เช่น ค่าเช่า, ประกันรายปี'
-            }
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
-          />
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="block text-xs text-gray-400 mb-1">
-                {type === 'yearly' ? 'ยอดต่อปี (บาท)' : 'จำนวนเงิน (บาท)'}
-              </label>
-              <input
-                type="number"
-                inputMode="decimal"
-                placeholder="0"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
-              />
-            </div>
-            {type === 'monthly' && (
-              <div className="w-28">
-                <label className="block text-xs text-gray-400 mb-1">ครบกำหนดวันที่</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={31}
-                  value={dueDay}
-                  onChange={(e) => setDueDay(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
-                />
-              </div>
-            )}
-            {type === 'yearly' && (
-              <div className="w-28">
-                <label className="block text-xs text-gray-400 mb-1">เดือนที่จ่าย</label>
-                <select
-                  value={dueMonth}
-                  onChange={(e) => setDueMonth(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-2 py-2 outline-none focus:border-slate-400 bg-white"
-                >
-                  {THAI_MONTHS_SHORT.map((m, i) => (
-                    <option key={m} value={i + 1}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {type === 'once' && (
-              <div className="w-28">
-                <label className="block text-xs text-gray-400 mb-1">เก็บกี่เดือน</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={60}
-                  value={months}
-                  onChange={(e) => setMonths(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
-                />
-              </div>
-            )}
-          </div>
-          {type === 'yearly' && (
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <label className="block text-xs text-gray-400 mb-1">ทุกกี่เดือน (ว่าง/1 = รายปีปกติ)</label>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={60}
-                  placeholder="12"
-                  value={months}
-                  onChange={(e) => setMonths(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="block text-xs text-gray-400 mb-1">เคยเก็บไว้ก่อนหน้า (ไม่หักเงินจริง)</label>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={savedCredit}
-                  onChange={(e) => setSavedCredit(e.target.value)}
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
-                />
-              </div>
-            </div>
-          )}
-          {type === 'yearly' && amount && (() => {
-            const cur = new Date().getMonth() + 1
-            const dm = parseInt(dueMonth) || 1
-            const period = parseInt(months) > 1 ? parseInt(months) : 12
-            const monthsLeft = ((dm - cur - 1 + 12) % 12) + 1
-            const annual = parseFloat(amount.replace(/,/g, '')) || 0
-            const credit = Math.max(0, parseFloat(savedCredit.replace(/,/g, '')) || 0)
-            const remaining = Math.max(0, annual - credit)
-            return (
-              <p className="text-[11px] text-slate-500">
-                จ่าย {THAI_MONTHS_SHORT[dm - 1]} ({period === 12 ? 'รายปี' : `ทุก ${period} เดือน`}) · อีก {monthsLeft} เดือน
-                {credit > 0 && ` · เก็บไว้แล้ว ฿${fmt(credit)}`} → กันไว้เดือนละ ฿{fmt(remaining / monthsLeft)}
-              </p>
-            )
-          })()}
-          {type === 'once' && amount && (() => {
-            const mths = Math.max(1, parseInt(months) || 1)
-            const total = parseFloat(amount.replace(/,/g, '')) || 0
-            return (
-              <p className="text-[11px] text-slate-500">
-                {mths === 1 ? 'กันเต็มจำนวนทันที' : `เก็บ ${mths} เดือน → กันไว้เดือนละ ฿${fmt(total / mths)}`}
-              </p>
-            )
-          })()}
-          <div>
-            <label className="block text-xs text-gray-400 mb-1">บัญชี</label>
-            <div className="flex gap-1.5">
-              {PAYMENT_METHODS.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setAccount(m)}
-                  className={`flex-1 min-w-0 px-1 py-2 rounded-xl text-xs font-semibold border tracking-tight ${
-                    account === m ? 'bg-slate-100 border-slate-400 text-slate-700' : 'border-gray-200 text-gray-500'
-                  }`}
-                >
-                  {PAYMENT_METHOD_LABELS[m]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <input
-            type="text"
-            placeholder="หมายเหตุ (ไม่บังคับ)"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 outline-none focus:border-slate-400"
-          />
-          <div className="flex gap-2 justify-end">
-            {editId && (
-              <button onClick={resetForm} className="px-3 py-1.5 bg-gray-200 text-gray-600 text-xs rounded-lg">
-                ยกเลิก
-              </button>
-            )}
-            <button
-              onClick={save}
-              disabled={busy === 'save'}
-              className="px-4 py-1.5 bg-slate-600 text-white text-xs rounded-lg font-semibold disabled:opacity-50"
-            >
-              {busy === 'save' ? 'กำลังบันทึก...' : editId ? 'บันทึกการแก้ไข' : 'เพิ่ม'}
-            </button>
-          </div>
-        </div>
+        <button
+          onClick={() => router.push('/bills/new')}
+          className="w-full bg-slate-600 text-white text-sm font-semibold rounded-2xl py-3 shadow-sm"
+        >
+          ＋ เพิ่มบิลใหม่
+        </button>
 
         {/* รายการ */}
         {loading ? (
@@ -520,10 +264,10 @@ export default function BillsPage() {
                       </button>
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className={`font-medium text-sm truncate ${strike ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
+                      <p className={`font-medium text-sm break-words ${strike ? 'text-gray-400 line-through' : 'text-gray-800'}`}>
                         {b.name}
                       </p>
-                      <p className="text-gray-400 text-xs truncate">
+                      <p className="text-gray-400 text-xs break-words">
                         {b.type === 'monthly' && `รายเดือน · ครบกำหนดวันที่ ${b.dueDay}${caughtUp ? ' · จ่ายแล้ว' : ''}`}
                         {b.type === 'yearly' &&
                           `${yearlyPeriodMonths(b) === 12 ? 'รายปี' : `ทุก ${yearlyPeriodMonths(b)} เดือน`} ฿${fmt(b.amount)} · จ่าย ${THAI_MONTHS_SHORT[yearlyNextDueMonth(b, new Date()) - 1]} · อีก ${monthsLeft} เดือน${caughtUp ? ' · เก็บเดือนนี้แล้ว ✓' : ''}`}
@@ -565,7 +309,7 @@ export default function BillsPage() {
                       ฿{fmt(perMonthCol)}
                       {showPerMonth && <span className="block text-[10px] font-normal text-gray-400">/เดือน</span>}
                     </p>
-                    <button onClick={() => startEdit(b)} className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0">
+                    <button onClick={() => router.push(`/bills/edit/${b.id}`)} className="text-gray-300 hover:text-blue-400 text-base mr-1 flex-shrink-0">
                       ✏️
                     </button>
                     <button onClick={() => remove(b)} disabled={busy === b.id} className="text-gray-300 hover:text-red-400 text-lg flex-shrink-0">
