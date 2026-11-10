@@ -58,11 +58,15 @@ export default function DashboardPage() {
   // รายการจริง (ไม่รวมการโอนเงินระหว่างบัญชี) ใช้คิดรายรับ/รายจ่าย/หมวด/วงล้อ ของเดือนที่เลือก
   const realMonthTxns = monthTxns.filter((t) => t.category !== TRANSFER_CATEGORY)
 
-  const totalIncome = realMonthTxns
+  // สรุปเดือน (การ์ดรายรับ/รายจ่าย + วงล้อทั้งสอง) นับแค่เงินที่หมุนผ่าน KBank/เงินสดจริง ไม่รวมเงินออม
+  // ออมทรัพย์เป็นเงินเก็บ แยกดูที่หน้า /savings อยู่แล้ว ไม่ควรไปปนกับยอดคงเหลือที่ใช้จ่ายได้จริงของเดือน
+  const cashMonthTxns = realMonthTxns.filter((t) => t.paymentMethod !== 'ออมทรัพย์')
+
+  const totalIncome = cashMonthTxns
     .filter((t) => t.type === 'รายรับ')
     .reduce((s, t) => s + t.amount, 0)
 
-  const totalExpense = realMonthTxns
+  const totalExpense = cashMonthTxns
     .filter((t) => t.type === 'รายจ่าย')
     .reduce((s, t) => s + t.amount, 0)
 
@@ -80,8 +84,8 @@ export default function DashboardPage() {
   })
 
   // ---- วงล้อสรุป ----
-  const shopIncomeTxns = realMonthTxns.filter((t) => t.type === 'รายรับ' && isShopCategory(t.category))
-  const shopExpenseTxns = realMonthTxns.filter((t) => t.type === 'รายจ่าย' && isShopCategory(t.category))
+  const shopIncomeTxns = cashMonthTxns.filter((t) => t.type === 'รายรับ' && isShopCategory(t.category))
+  const shopExpenseTxns = cashMonthTxns.filter((t) => t.type === 'รายจ่าย' && isShopCategory(t.category))
 
   const shopIncome = shopIncomeTxns.reduce((s, t) => s + t.amount, 0)
   const shopExpense = shopExpenseTxns.reduce((s, t) => s + t.amount, 0)
