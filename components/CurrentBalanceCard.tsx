@@ -17,6 +17,9 @@ export default function CurrentBalanceCard({
   size?: 'full' | 'compact'
 }) {
   const bal = computeCurrentBalances(transactions)
+  // ยอดคงเหลือตอนนี้ (ตัวใหญ่) = เงินที่ใช้จ่ายได้จริง (KBank + เงินสด) เท่านั้น — ไม่รวมออมทรัพย์
+  // (ออมทรัพย์โชว์เป็นชิปแยกอยู่แล้วด้านล่าง ไม่ควรไปปนกับยอดที่ใช้จ่ายได้จริง)
+  const spendableTotal = bal.kbank + bal.cash
 
   return (
     <div>
@@ -24,7 +27,7 @@ export default function CurrentBalanceCard({
         <p className={size === 'full' ? 'text-rose-400 text-sm' : 'text-gray-400 text-xs'}>ยอดคงเหลือตอนนี้</p>
       </div>
       <p className={`font-bold text-gray-800 ${size === 'full' ? 'text-3xl mb-3' : 'text-xl mb-2'}`}>
-        {bal.total >= 0 ? '+' : ''}฿{fmt(bal.total)}
+        {spendableTotal >= 0 ? '+' : ''}฿{fmt(spendableTotal)}
       </p>
       <div className="grid grid-cols-3 gap-2">
         <div className="bg-sky-500/10 rounded-xl p-2.5">
