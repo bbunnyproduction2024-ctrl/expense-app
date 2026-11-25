@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TransactionType, PaymentMethod, PAYMENT_METHODS, PAYMENT_METHOD_LABELS, INCOME_CATEGORIES, EXPENSE_CATEGORIES, Category } from '@/lib/types'
 import { format } from 'date-fns'
@@ -12,15 +12,22 @@ export default function AddPage() {
   const [category, setCategory] = useState<Category>(INCOME_CATEGORIES[0])
   const [amount, setAmount] = useState('')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('KBank')
+  const [store, setStore] = useState('')
+  const [savedStores, setSavedStores] = useState<string[]>([])
   const [note, setNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetch('/api/stores').then((r) => r.json()).then((d) => { if (Array.isArray(d)) setSavedStores(d) })
+  }, [])
 
   const categories = type === 'รายรับ' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES
 
   function handleTypeChange(t: TransactionType) {
     setType(t)
     setCategory(t === 'รายรับ' ? INCOME_CATEGORIES[0] : EXPENSE_CATEGORIES[0])
+    if (t === 'รายรับ') setStore('')
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -34,11 +41,13 @@ export default function AddPage() {
     setSubmitting(true)
     setError('')
 
+    const fullNote = type === 'รายจ่าย' && store.trim() ? `${note.trim()}${note.trim() ? ' ' : ''}@${store.trim()}` : note
+
     try {
       const res = await fetch('/api/transactions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date, type, category, amount: amountNum, paymentMethod, note }),
+        body: JSON.stringify({ date, type, category, amount: amountNum, paymentMethod, note: fullNote }),
       })
 
       if (!res.ok) throw new Error('Failed')
@@ -142,6 +151,34 @@ export default function AddPage() {
             ))}
           </div>
         </div>
+
+        {/* สถานที่ซื้อ — เฉพาะรายจ่าย */}
+        {!isIncome && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <label className="block text-sm text-gray-500 mb-2">🏪 ซื้อจากที่ไหน (ไม่บังคับ)</label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {[...new Set(['Makro', 'โลตัส', '7-11', 'BigC', 'ตลาด', ...savedStores])].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStore(s)}
+                  className={`px-3 py-1.5 rounded-full text-sm border transition-all ${
+                    store === s ? 'bg-red-50 border-red-400 text-red-700 font-semibold' : 'border-gray-200 text-gray-600'
+                  }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <input
+              type="text"
+              placeholder="หรือพิมพ์เอง..."
+              value={store}
+              onChange={(e) => setStore(e.target.value)}
+              className="w-full text-base text-gray-700 border-none outline-none bg-transparent"
+            />
+          </div>
+        )}
 
         {/* Date */}
         <div className="bg-white rounded-2xl p-4 shadow-sm">
